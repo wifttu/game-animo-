@@ -129,7 +129,7 @@ export const DECOR_GEO = {
 
 // ───── 손에 드는 도구 ─────
 export function toolModel(kind, tier) {
-  const metal = tier === 2 ? '#c9d3dc' : '#8d9096', hd = '#8a6238';
+  const metal = tier === 2 ? '#c9d3dc' : tier === 0 ? '#c08a4e' : '#8d9096', hd = '#8a6238';
   const P = {
     axe: () => [part(cyl(.03, .035, .7), hd, { p: [0, .25, 0] }), part(box(.26, .2, .05), metal, { p: [.12, .52, 0] })],
     pick: () => [part(cyl(.03, .035, .75), hd, { p: [0, .27, 0] }), part(box(.6, .07, .07), metal, { p: [0, .62, 0] }),

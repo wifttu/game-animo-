@@ -7,19 +7,16 @@ import { heightAt, slopeAt, forestAt, SIZE } from './world.js';
 const flat = (x, z, max = .55) => slopeAt(x, z) < max;
 // drops: [아이템, 최소, 최대]
 export const NODE_TYPES = {
-  oak: { n: 250, r: .5, hp: 30, tool: 'axe', drops: [['wood', 3, 5], ['stick', 0, 2], ['sap', 0, 1]], respawn: 300, label: '참나무', xp: 5, s: [.85, 1.35], shadow: 1,
+  oak: { n: 250, r: .5, hp: 30, tool: 'axe', drops: [['wood', 3, 5], ['sap', 0, 1]], respawn: 300, label: '참나무', xp: 5, s: [.85, 1.35], shadow: 1,
     rule: (x, z, h) => h > 1.8 && h < 17 && flat(x, z) && forestAt(x, z) > -.12 },
-  pine: { n: 210, r: .45, hp: 26, tool: 'axe', drops: [['wood', 2, 4], ['stick', 0, 1], ['sap', 0, 2]], respawn: 300, label: '소나무', xp: 5, s: [.9, 1.5], shadow: 1,
+  pine: { n: 210, r: .45, hp: 26, tool: 'axe', drops: [['wood', 2, 4], ['sap', 0, 2]], respawn: 300, label: '소나무', xp: 5, s: [.9, 1.5], shadow: 1,
     rule: (x, z, h) => h > 9 && h < 30 && flat(x, z, .8) && forestAt(x, z) > -.25 },
-  rock: { n: 130, r: 1.1, hp: 40, tool: 'pick', req: 1, drops: [['stone', 3, 5], ['flint', 0, 1]], respawn: 360, label: '바위', xp: 6, s: [.7, 1.4], shadow: 1,
+  rock: { n: 150, r: 1.1, hp: 30, tool: 'pick', req: 1, drops: [['stone', 3, 5], ['flint', 0, 1, .5]], respawn: 360, label: '바위', xp: 6, s: [.7, 1.4], shadow: 1,
     rule: (x, z, h) => h > 1.2 && flat(x, z, .9) },
-  ore: { n: 60, r: 1.0, hp: 60, tool: 'pick', req: 1, drops: [['ore', 2, 3], ['stone', 1, 2]], respawn: 480, label: '철광석', xp: 10, s: [.8, 1.2], shadow: 1,
+  ore: { n: 60, r: 1.0, hp: 55, tool: 'pick', req: 2, drops: [['ore', 2, 3], ['stone', 1, 2]], respawn: 480, label: '철광석', xp: 10, s: [.8, 1.2], shadow: 1,
     rule: (x, z, h) => h > 12 && flat(x, z, 1) },
   berry: { n: 90, r: .8, pick: 1, drops: [['berry', 2, 4]], respawn: 200, label: '열매 덤불', xp: 2, s: [1, 1.3], bush: 1,
     rule: (x, z, h) => h > 2 && h < 16 && flat(x, z) },
-  stick: { n: 190, r: 0, pick: 1, drops: [['stick', 1, 1]], respawn: 150, label: '나뭇가지', xp: 1, s: [.9, 1.3], rule: (x, z, h) => h > 1.5 && h < 22 && flat(x, z) && forestAt(x, z) > -.3 },
-  pebble: { n: 170, r: 0, pick: 1, drops: [['stone', 1, 1]], respawn: 150, label: '돌멩이', xp: 1, s: [.9, 1.4], rule: (x, z, h) => h > .5 && flat(x, z, .8) },
-  flint: { n: 70, r: 0, pick: 1, drops: [['flint', 1, 1]], respawn: 240, label: '부싯돌', xp: 2, s: [1, 1.3], rule: (x, z, h) => (h > .4 && h < 2) || h > 12 },
   fiber: { n: 170, r: 0, pick: 1, drops: [['fiber', 1, 2], ['seed', 0, 1, .35]], respawn: 150, label: '억새풀', xp: 1, s: [1, 1.5], rule: (x, z, h) => h > 1.6 && h < 16 && flat(x, z) },
   mushroom: { n: 80, r: 0, pick: 1, drops: [['mushroom', 1, 2]], respawn: 240, label: '버섯', xp: 2, s: [1, 1.5], rule: (x, z, h) => h > 2 && h < 22 && forestAt(x, z) > .05 },
   herb: { n: 60, r: 0, pick: 1, drops: [['herb', 1, 1]], respawn: 260, label: '약초', xp: 2, s: [1, 1.4], rule: (x, z, h) => h > 2 && h < 24 && flat(x, z) },
@@ -39,8 +36,7 @@ function setM(n, tilt = 0, sm = 1, wob = 0) {
 export function createNodes() {
   const r = rng(4242), col = new THREE.Color();
   // 시작 지점 주변에는 튜토리얼용 자원을 확실히 배치
-  const starter = [['stick', 3, 5], ['stick', -4, 7], ['stick', 6, 9], ['stick', -2, 11], ['pebble', 4, 2], ['pebble', -5, 3], ['pebble', 1, 8], ['pebble', 7, 5],
-    ['fiber', -6, 8], ['fiber', 5, 12], ['fiber', -3, 5], ['berry', -8, 10], ['berry', 9, 12], ['flint', 2, 13], ['oak', -10, 4], ['oak', 11, 7], ['oak', 2, 16], ['rock', -9, 14]];
+  const starter = [['fiber', -6, 8], ['fiber', 5, 12], ['fiber', -3, 5], ['berry', -8, 10], ['berry', 9, 12], ['oak', -10, 4], ['oak', 11, 7], ['oak', 2, 16], ['oak', -5, 13], ['rock', -9, 14], ['rock', 12, 13]];
   const bushM = [];
   for (const t in NODE_TYPES) {
     const T = NODE_TYPES[t], im = new THREE.InstancedMesh(NODE_GEO[t](), ['oak', 'pine', 'berry', 'fiber', 'herb'].includes(t) ? FOLIAGE : MAT, T.n);
