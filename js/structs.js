@@ -1,7 +1,8 @@
 // 설치물(건축) 시스템
 import * as THREE from 'three';
 import { G, emit } from './util.js';
-import { STRUCT_GEO, mesh, merge, part, MAT } from './geo.js';
+import { STRUCT_GEO, mesh, merge, part, MAT, hdr } from './geo.js';
+import { burst } from './fx.js';
 import { heightAt, slopeAt } from './world.js';
 
 export const STRUCTS = {
@@ -9,8 +10,8 @@ export const STRUCTS = {
   tent: { label: '텐트', r: 1.7, act: '잠자기' }, chest: { label: '보관 상자', r: .75, act: '열기' }, plot: { label: '텃밭', r: 0, act: '가꾸기', free: 1 },
   fence: { label: '울타리', seg: 1, snap: 1, free: 1 }, wall: { label: '나무 벽', seg: 1, snap: 1, free: 1 }, floor: { label: '나무 바닥', r: 0, snap: 1, free: 1, flat: 1 },
 };
-const flameMat = new THREE.MeshBasicMaterial({ color: '#ffb23e', transparent: true, opacity: .9 });
-const flameMat2 = new THREE.MeshBasicMaterial({ color: '#ff6a2a', transparent: true, opacity: .85 });
+const flameMat = new THREE.MeshBasicMaterial({ color: hdr('#ffb23e', 3), transparent: true, opacity: .9 });
+const flameMat2 = new THREE.MeshBasicMaterial({ color: hdr('#ff6a2a', 2.2), transparent: true, opacity: .85 });
 const geoCache = {};
 const cropGeo = () => geoCache.crop ??= merge([part(new THREE.ConeGeometry(.12, .5, 5), '#5fae5b', { p: [0, .25, 0], g: '#b5e06a' }), part(new THREE.ConeGeometry(.09, .2, 5), '#ff8f3a', { p: [0, .02, 0], r: [Math.PI, 0, 0] })]);
 
@@ -41,6 +42,7 @@ export function updateStructs(dt) {
     if (s.flames) {
       s.flames.forEach((f, i) => { const k = 1 + Math.sin(G.clock * (11 + i * 5) + s.x) * .14; f.scale.set(k, 1 + Math.sin(G.clock * (8 + i * 6)) * .22, k); f.rotation.y += dt * 3; });
       s.light.intensity = 26 + Math.sin(G.clock * 13) * 5 + Math.sin(G.clock * 7.3) * 4;
+      if (Math.random() < dt * 5) burst(s.x + (Math.random() - .5) * .4, s.y + .9, s.z + (Math.random() - .5) * .4, '#ffb23e', 1, 2.2, 3, .6);
     }
     if (s.crops) {
       const g = s.data.g;

@@ -34,6 +34,18 @@ export function merge(parts) {
   return g;
 }
 export const MAT = new THREE.MeshLambertMaterial({ vertexColors: true });
+// 바람에 흔들리는 식생용 재질 (인스턴스 위치로 위상을 달리한다)
+export const windU = { value: 0 };
+export const FOLIAGE = new THREE.MeshLambertMaterial({ vertexColors: true });
+FOLIAGE.onBeforeCompile = (s) => {
+  s.uniforms.uTime = windU;
+  s.vertexShader = 'uniform float uTime;\n' + s.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+    #ifdef USE_INSTANCING
+      float wph=instanceMatrix[3].x*.21+instanceMatrix[3].z*.17, wy=max(position.y-.9,0.), wk=wy*wy*.009+max(position.y-.1,0.)*.012;
+      transformed.x+=sin(uTime*1.3+wph+position.y*.6)*wk; transformed.z+=cos(uTime*1.05+wph*1.4+position.y*.5)*wk*.8;
+    #endif`);
+};
+export const hdr = (c, k = 2.6) => new THREE.Color(c).multiplyScalar(k);
 export const mesh = (parts, shadow = true) => {
   const m = new THREE.Mesh(merge(parts), MAT); m.castShadow = shadow; m.receiveShadow = true; return m;
 };
@@ -129,7 +141,7 @@ export function toolModel(kind, tier) {
   const m = mesh(P[kind]());
   m.rotation.x = Math.PI / 2;
   if (kind === 'torch') {
-    const f = new THREE.Mesh(cone(.09, .3, 6), new THREE.MeshBasicMaterial({ color: '#ffb347' })); f.position.y = .72; m.add(f);
+    const f = new THREE.Mesh(cone(.09, .3, 6), new THREE.MeshBasicMaterial({ color: hdr('#ffb347') })); f.position.y = .72; m.add(f);
     const l = new THREE.PointLight('#ffb060', 14, 16, 1.6); l.position.y = .8; m.add(l); m.userData.flame = f; m.userData.light = l;
   }
   return m;
@@ -191,7 +203,7 @@ export function animalModel(kind) {
     const l = new THREE.Mesh(legGeo, MAT); l.position.set(x * bw * .55, c.legH, z * bl * .32); l.castShadow = true; g.add(l); legs.push(l);
   }
   if (c.tail === 'orb') {
-    const orb = new THREE.Mesh(ico(.11, 1), new THREE.MeshBasicMaterial({ color: '#fff3a8' }));
+    const orb = new THREE.Mesh(ico(.11, 1), new THREE.MeshBasicMaterial({ color: hdr('#fff3a8', 1.7) }));
     orb.position.set(0, c.y + .42, -.4); g.add(orb); g.userData.orb = orb;
   }
   g.userData.body = body; g.userData.legs = legs;

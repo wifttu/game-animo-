@@ -1,23 +1,33 @@
 // 입력: 터치 조이스틱 + 화면 드래그 카메라 + 키보드/마우스
 export const input = { mx: 0, my: 0, lookX: 0, lookY: 0, zoom: 0, jump: false, sprint: false, action: false };
 const keys = {};
+import { G } from './util.js';
+import { applyLayout } from './layout.js';
 
 export function initInput(onAction, onKey) {
   const layer = document.getElementById('touch'), joy = document.getElementById('joy'), knob = document.getElementById('joyk');
-  let joyId = null, jx = 0, jy = 0; const look = new Map(); let pinch = 0;
-  const R = 52;
+  let joyId = null, jx = 0, jy = 0, R = 52; const look = new Map(); let pinch = 0;
   layer.addEventListener('pointerdown', e => {
+    if (G.editing) return;
     layer.setPointerCapture(e.pointerId);
-    if (e.pointerType !== 'mouse' && joyId === null && e.clientX < innerWidth * .42) {
-      joyId = e.pointerId; jx = e.clientX; jy = e.clientY;
+    // 조이스틱 기준 위치(사용자가 옮겼을 수 있음)에 따라 조작 영역을 정한다
+    const r = joy.getBoundingClientRect(), bx = r.left + r.width / 2, by = r.top + r.height / 2;
+    R = 52 * (G.settings.btnScale || 1);
+    const inZone = G.settings.joyFixed ? Math.hypot(e.clientX - bx, e.clientY - by) < R * 1.7
+      : (bx < innerWidth / 2 ? e.clientX < innerWidth * .45 : e.clientX > innerWidth * .55);
+    if (e.pointerType !== 'mouse' && joyId === null && inZone) {
+      joyId = e.pointerId; [jx, jy] = G.settings.joyFixed ? [bx, by] : [e.clientX, e.clientY];
       joy.style.left = jx + 'px'; joy.style.top = jy + 'px'; joy.classList.add('on'); knob.style.transform = '';
+      if (G.settings.joyFixed) move(e);
     } else look.set(e.pointerId, [e.clientX, e.clientY]);
   });
+  const move = (e) => {
+    let dx = e.clientX - jx, dy = e.clientY - jy; const d = Math.hypot(dx, dy);
+    if (d > R) { dx *= R / d; dy *= R / d; }
+    knob.style.transform = `translate(${dx}px,${dy}px)`; input.mx = dx / R; input.my = -dy / R;
+  };
   layer.addEventListener('pointermove', e => {
-    if (e.pointerId === joyId) {
-      let dx = e.clientX - jx, dy = e.clientY - jy; const d = Math.hypot(dx, dy);
-      if (d > R) { dx *= R / d; dy *= R / d; }
-      knob.style.transform = `translate(${dx}px,${dy}px)`; input.mx = dx / R; input.my = -dy / R;
+    if (e.pointerId === joyId) { move(e);
     } else if (look.has(e.pointerId)) {
       const l = look.get(e.pointerId);
       if (look.size === 2) {
@@ -28,7 +38,7 @@ export function initInput(onAction, onKey) {
     }
   });
   const up = e => {
-    if (e.pointerId === joyId) { joyId = null; input.mx = input.my = 0; joy.classList.remove('on'); joy.style.left = joy.style.top = ''; knob.style.transform = ''; }
+    if (e.pointerId === joyId) { joyId = null; input.mx = input.my = 0; joy.classList.remove('on'); knob.style.transform = ''; applyLayout(); }
     look.delete(e.pointerId); pinch = 0;
   };
   layer.addEventListener('pointerup', up); layer.addEventListener('pointercancel', up);

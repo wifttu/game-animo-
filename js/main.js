@@ -1,6 +1,7 @@
 // 부트스트랩 + 메인 루프
 import * as THREE from 'three';
-import { G, DAY_LEN } from './util.js';
+import { G, DAY_LEN, on } from './util.js';
+import { initPost, resizePost, renderPost, hasPost } from './post.js';
 import { createWorld, updateWorld, setQuality } from './world.js';
 import { createNodes, updateNodes } from './nodes.js';
 import { createPlayer, updatePlayer, updateCamera } from './player.js';
@@ -14,8 +15,9 @@ import { spawnAnimal } from './animals.js';
 import { updateFx } from './fx.js';
 import { inv, HOTBAR } from './items.js';
 import { save, load, hasSave, clearSave, loadSettings } from './save.js';
-import { sfx } from './audio.js';
+import { sfx, startMusic } from './audio.js';
 import './quests.js';
+import { initLayout } from './layout.js';
 
 const $ = (id) => document.getElementById(id);
 loadSettings();
@@ -25,12 +27,15 @@ renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadow
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.18;
 G.scene = new THREE.Scene();
 G.camera = new THREE.PerspectiveCamera(55, 1, .3, 3000);
-const resize = () => { renderer.setSize(innerWidth, innerHeight, false); G.camera.aspect = innerWidth / innerHeight; G.camera.fov = innerWidth < innerHeight ? 68 : 55; G.camera.updateProjectionMatrix(); };
+let usePost = false;
+const resize = () => { renderer.setSize(innerWidth, innerHeight, false); resizePost(innerWidth, innerHeight, renderer.getPixelRatio()); G.camera.aspect = innerWidth / innerHeight; G.camera.fov = innerWidth < innerHeight ? 68 : 55; G.camera.updateProjectionMatrix(); };
 addEventListener('resize', resize);
 
-createWorld(); setQuality(G.settings.quality); resize();
+createWorld(); initPost();
+on('quality', (q) => { usePost = q === 'high' && hasPost(); resize(); });
+setQuality(G.settings.quality);
 createNodes(); createPlayer();
-initUI();
+initUI(); initLayout();
 initInput(doAction, (code) => {
   if (!G.started) return;
   if (code.startsWith('Digit')) { const i = +code.slice(5) - 1; if (i >= 0 && i < HOTBAR) { inv.sel = i; refreshHotbar(); } }
@@ -44,7 +49,7 @@ initInput(doAction, (code) => {
 function start(cont) {
   if (cont) { if (!load()) toast('저장 데이터를 불러오지 못해 새로 시작합니다', 'warn'); } else clearSave();
   $('title').classList.add('hidden'); $('hud').classList.remove('hidden');
-  G.started = true; G.paused = false; refreshHotbar(); sfx('quest');
+  G.started = true; G.paused = false; refreshHotbar(); sfx('quest'); startMusic();
   if (!cont) { toast('🌴 낯선 섬에 도착했습니다', 'big'); setTimeout(() => toast('주변에서 나뭇가지와 돌을 주워보세요'), 1500); }
 }
 $('loading').classList.add('hidden');
@@ -58,7 +63,7 @@ const clock = new THREE.Clock(); let saveT = 0, tgtT = 0, stepPh = 0;
 function frame() {
   requestAnimationFrame(frame);
   const dt = Math.min(clock.getDelta(), .05), p = G.player;
-  if (!G.started) { p.cam.yaw += dt * .06; G.clock += dt; updateCamera(dt, true); updateWorld(dt, p.pos); renderer.render(G.scene, G.camera); return; }
+  if (!G.started) { p.cam.yaw += dt * .06; G.clock += dt; updateCamera(dt, true); updateWorld(dt, p.pos); draw(dt); return; }
   if (!G.paused) {
     G.clock += dt; G.tod += dt / DAY_LEN; if (G.tod >= 1) { G.tod -= 1; G.day++; }
     if (input.action && !G.build) doAction();
@@ -68,7 +73,8 @@ function frame() {
     if ((saveT += dt) > 20) { saveT = 0; save(); }
   } else { input.lookX = input.lookY = 0; }
   updateCamera(dt); updateWorld(dt, p.pos); updateHUD(dt);
-  renderer.render(G.scene, G.camera);
+  draw(dt);
 }
+const draw = (dt) => usePost ? renderPost(dt) : renderer.render(G.scene, G.camera);
 frame();
 if (location.search.includes('debug')) window.__G = G, window.__dbg = { gain, openPanel, addStruct, spawnAnimal, doAction, findTarget }; // 디버그용

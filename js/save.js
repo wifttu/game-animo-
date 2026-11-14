@@ -15,10 +15,15 @@ export function save() {
   const p = G.player;
   const data = { v: 1, clock: G.clock, tod: G.tod, day: G.day, stats: G.stats, spawn: G.spawn, armor: G.armor, pos: [p.pos.x, p.pos.z], yaw: p.cam.yaw,
     inv: inv.slots, sel: inv.sel, structs: G.structs.map(s => ({ type: s.type, x: s.x, z: s.z, rot: s.rot, data: s.data })),
-    nodes: saveNodes(), pet: G.pet ? [G.pet.x, G.pet.z] : null, quest, settings: G.settings };
+    nodes: saveNodes(), pet: G.pet ? [G.pet.x, G.pet.z] : null, quest };
   try { localStorage.setItem(KEY, JSON.stringify(data)); } catch { /* 저장소 사용 불가 */ }
 }
-export function loadSettings() { try { Object.assign(G.settings, JSON.parse(localStorage.getItem(KEY))?.settings); } catch { /* 없음 */ } }
+const SKEY = 'lumi-island-settings';
+export function loadSettings() {
+  try { Object.assign(G.settings, JSON.parse(localStorage.getItem(KEY))?.settings, JSON.parse(localStorage.getItem(SKEY))); } catch { /* 없음 */ }
+  if (!['low', 'mid', 'high'].includes(G.settings.quality)) G.settings.quality = 'high';
+}
+export function saveSettings() { try { localStorage.setItem(SKEY, JSON.stringify(G.settings)); } catch { /* 저장소 사용 불가 */ } }
 export function load() {
   let d; try { d = JSON.parse(localStorage.getItem(KEY)); } catch { return false; }
   if (!d || d.v !== 1) return false;

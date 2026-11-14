@@ -8,7 +8,9 @@ import { QUESTS, quest } from './quests.js';
 import { mapCanvas, HALF, SIZE, setQuality } from './world.js';
 import { project } from './fx.js';
 import { sfx } from './audio.js';
-import { save, clearSave } from './save.js';
+import { save, clearSave, saveSettings } from './save.js';
+import { startLayoutEdit, applyLayout } from './layout.js';
+import { setMusic } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
 let panel = null, selSlot = 0, craftCat = 'tool', chest = null;
@@ -32,7 +34,7 @@ export function refreshHotbar() {
 
 // ── 패널
 export function openPanel(name, arg) {
-  if (G.dead || !G.started) return;
+  if (G.dead || !G.started || G.editing) return;
   cancelBuild(); panel = name; chest = name === 'inv' && arg?.data ? arg : null;
   if (name === 'craft' && typeof arg === 'string') craftCat = arg;
   $('panel').classList.remove('hidden'); G.paused = true; sfx('ui'); renderPanel();
@@ -80,7 +82,11 @@ function renderPanel() {
     T.textContent = '설정';
     const row = (t, d, b) => `<div class="setrow"><div><b>${t}</b><p>${d}</p></div>${b}</div>`;
     B.innerHTML = row('효과음', '게임 내 소리', `<button class="ghostbtn" data-set="sound">${G.settings.sound ? '🔊 켜짐' : '🔇 꺼짐'}</button>`)
-      + row('그래픽 품질', '기기가 버거우면 낮음으로 바꾸세요', `<button class="ghostbtn" data-set="quality">${G.settings.quality === 'high' ? '✨ 높음' : '⚡ 낮음'}</button>`)
+      + row('배경음악', '시간대에 따라 분위기가 바뀝니다', `<button class="ghostbtn" data-set="music">${G.settings.music ? '🎵 켜짐' : '🔇 꺼짐'}</button>`)
+      + row('그래픽 품질', '높음: 빛 번짐·색 보정 효과 포함. 버벅이면 낮추세요', `<button class="ghostbtn" data-set="quality">${{ high: '✨ 높음', mid: '👍 보통', low: '⚡ 낮음' }[G.settings.quality]}</button>`)
+      + row('버튼 위치', '조이스틱·행동·점프 버튼과 단축 슬롯을 원하는 곳으로 옮깁니다', `<button class="primary" data-set="layout">✋ 위치 편집</button>`)
+      + row('조이스틱 방식', '자유: 터치한 곳에 나타남 · 고정: 정해 둔 위치에서만 조작', `<button class="ghostbtn" data-set="joy">${G.settings.joyFixed ? '📌 고정' : '👆 자유'}</button>`)
+      + row('버튼 크기', '조이스틱과 조작 버튼의 크기', `<button class="ghostbtn" data-set="scale">${{ 0.85: '작게', 1: '보통', 1.2: '크게', 1.4: '아주 크게' }[G.settings.btnScale] || '보통'}</button>`)
       + row('전체 화면', '가로 모드로 플레이하는 것을 추천합니다', `<button class="ghostbtn" data-set="full">⛶ 전환</button>`)
       + row('저장', '게임은 자동으로 저장됩니다', `<button class="ghostbtn" data-set="save">💾 지금 저장</button>`)
       + row('처음부터 다시', '저장된 진행 상황을 모두 지웁니다', `<button class="ghostbtn" data-set="reset">🗑️ 초기화</button>`)
@@ -108,7 +114,12 @@ function panelClick(e) {
   } else if (d.set) {
     const S = G.settings;
     if (d.set === 'sound') { S.sound = !S.sound; sfx('ui'); }
-    if (d.set === 'quality') { S.quality = S.quality === 'high' ? 'low' : 'high'; setQuality(S.quality); }
+    if (d.set === 'music') { S.music = !S.music; setMusic(S.music); }
+    if (d.set === 'quality') { S.quality = { high: 'mid', mid: 'low', low: 'high' }[S.quality]; setQuality(S.quality); }
+    if (d.set === 'joy') S.joyFixed = !S.joyFixed;
+    if (d.set === 'scale') { const o = [0.85, 1, 1.2, 1.4]; S.btnScale = o[(o.indexOf(S.btnScale) + 1) % o.length]; applyLayout(); }
+    if (d.set === 'layout') { closePanel(); startLayoutEdit(); return; }
+    saveSettings();
     if (d.set === 'full') { document.fullscreenElement ? document.exitFullscreen?.() : document.documentElement.requestFullscreen?.().catch(() => toast('이 브라우저는 전체 화면을 지원하지 않습니다')); }
     if (d.set === 'save') { panel = null; G.paused = false; save(); G.paused = true; panel = 'menu'; toast('💾 저장했습니다'); }
     if (d.set === 'reset') { if (Date.now() - resetArmed < 4000) { G.started = false; clearSave(); location.reload(); return; } resetArmed = Date.now(); toast('한 번 더 누르면 모든 진행이 삭제됩니다', 'warn'); }
@@ -125,7 +136,7 @@ export function initUI() {
   document.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => openPanel(b.dataset.open)));
   $('quest').addEventListener('click', () => openPanel('quest'));
   $('hotbar').addEventListener('pointerdown', (e) => {
-    const t = e.target.closest('[data-slot]'); if (!t) return; e.stopPropagation();
+    const t = e.target.closest('[data-slot]'); if (!t || G.editing) return; e.stopPropagation();
     const i = +t.dataset.slot, s = inv.slots[i];
     if (i === inv.sel && s && (ITEMS[s.id].food || ITEMS[s.id].place || ITEMS[s.id].armor)) useSlot(i); else { inv.sel = i; cancelBuild(); sfx('ui'); }
     refreshHotbar();
