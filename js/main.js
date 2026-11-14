@@ -19,7 +19,10 @@ import { sfx, startMusic } from './audio.js';
 import './quests.js';
 import { initLayout } from './layout.js';
 
+const VERSION = 7; // 배포할 때마다 올린다 (타이틀 화면에 표시)
 const $ = (id) => document.getElementById(id);
+$('ver').textContent = '버전 ' + VERSION;
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 loadSettings();
 const canvas = $('c');
 const renderer = G.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
