@@ -4,7 +4,7 @@ import { inv } from './items.js';
 import { saveNodes, loadNodes } from './nodes.js';
 import { addStruct } from './structs.js';
 import { spawnAnimal } from './animals.js';
-import { quest } from './quests.js';
+import { quest, QUEST_VER } from './quests.js';
 import { heightAt } from './world.js';
 const KEY = 'lumi-island-save-v2'; // v2: 단계형 제작 체계로 개편 (이전 저장과 호환되지 않음)
 
@@ -14,8 +14,8 @@ export function save() {
   if (!G.started || G.dead) return;
   const p = G.player;
   const data = { v: 1, clock: G.clock, tod: G.tod, day: G.day, stats: G.stats, spawn: G.spawn, armor: G.armor, pos: [p.pos.x, p.pos.z], yaw: p.cam.yaw,
-    inv: inv.slots, sel: inv.sel, structs: G.structs.map(s => ({ type: s.type, x: s.x, z: s.z, rot: s.rot, data: s.data })),
-    nodes: saveNodes(), pet: G.pet ? [G.pet.x, G.pet.z] : null, quest };
+    inv: inv.slots, sel: inv.sel, structs: G.structs.map(s => ({ type: s.type, x: s.x, y: s.y, z: s.z, rot: s.rot, data: s.data })),
+    nodes: saveNodes(), pet: G.pet ? [G.pet.x, G.pet.z] : null, quest, qv: QUEST_VER };
   try { localStorage.setItem(KEY, JSON.stringify(data)); } catch { /* 저장소 사용 불가 */ }
 }
 const SKEY = 'lumi-island-settings';
@@ -30,9 +30,10 @@ export function load() {
   G.clock = d.clock; G.tod = d.tod; G.day = d.day; Object.assign(G.stats, d.stats); G.spawn = d.spawn; G.armor = d.armor;
   const p = G.player; p.pos.set(d.pos[0], heightAt(d.pos[0], d.pos[1]), d.pos[1]); p.cam.yaw = d.yaw || 0;
   d.inv.forEach((s, i) => { inv.slots[i] = s; }); inv.sel = d.sel || 0;
-  for (const s of d.structs) addStruct(s.type, s.x, s.z, s.rot, s.data);
+  // 바닥을 먼저 만들어야 벽·지붕이 높이를 맞출 수 있다
+  for (const s of [...d.structs].sort((a, b) => (b.type === 'floor') - (a.type === 'floor'))) addStruct(s.type, s.x, s.z, s.rot, s.data, s.type === 'floor' || d.qv >= 3 ? s.y : undefined);
   loadNodes(d.nodes);
   if (d.pet) spawnAnimal('lumi', d.pet[0], d.pet[1], true);
-  Object.assign(quest, d.quest);
+  if (d.qv === QUEST_VER) Object.assign(quest, d.quest);
   return true;
 }

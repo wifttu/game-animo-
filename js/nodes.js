@@ -17,7 +17,7 @@ export const NODE_TYPES = {
     rule: (x, z, h) => h > 12 && flat(x, z, 1) },
   berry: { n: 90, r: .8, pick: 1, drops: [['berry', 2, 4]], respawn: 200, label: '열매 덤불', xp: 2, s: [1, 1.3], bush: 1,
     rule: (x, z, h) => h > 2 && h < 16 && flat(x, z) },
-  fiber: { n: 170, r: 0, pick: 1, drops: [['fiber', 1, 2], ['seed', 0, 1, .35]], respawn: 150, label: '억새풀', xp: 1, s: [1, 1.5], rule: (x, z, h) => h > 1.6 && h < 16 && flat(x, z) },
+  fiber: { n: 170, r: 0, pick: 1, drops: [['fiber', 1, 2], ['seed', 1, 1, .3], ['seed_potato', 1, 1, .14], ['seed_pumpkin', 1, 1, .08]], respawn: 150, label: '억새풀', xp: 1, s: [1, 1.5], rule: (x, z, h) => h > 1.6 && h < 16 && flat(x, z) },
   mushroom: { n: 80, r: 0, pick: 1, drops: [['mushroom', 1, 2]], respawn: 240, label: '버섯', xp: 2, s: [1, 1.5], rule: (x, z, h) => h > 2 && h < 22 && forestAt(x, z) > .05 },
   herb: { n: 60, r: 0, pick: 1, drops: [['herb', 1, 1]], respawn: 260, label: '약초', xp: 2, s: [1, 1.4], rule: (x, z, h) => h > 2 && h < 24 && flat(x, z) },
 };

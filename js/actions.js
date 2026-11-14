@@ -3,7 +3,8 @@ import { G, emit, on, clamp, lerp, rint } from './util.js';
 import { ITEMS, inv, HOTBAR, invAdd, invRemove, invCount, equipped, canCraft } from './items.js';
 import { nodesNear, hitNode, NODE_TYPES } from './nodes.js';
 import { damageAnimal, makePet } from './animals.js';
-import { addStruct, removeStruct, startBuild, cancelBuild, stationNear, STRUCTS } from './structs.js';
+import { addStruct, removeStruct, startBuild, cancelBuild, stationNear, STRUCTS, plantCrop, toggleDoor } from './structs.js';
+import { fishAction, fishHint } from './fishing.js';
 import { heightAt } from './world.js';
 import { toast, refreshHotbar, openPanel, closePanel, showDeath } from './ui.js';
 import { burst, floatText } from './fx.js';
@@ -67,6 +68,7 @@ const nearWater = () => { const p = G.player; return p.pos.y < .25 || heightAt(p
 export function actionHint() {
   const t = G.target, eq = equipped();
   if (G.build) return ['✅', '설치'];
+  if (G.fish || !t) { const fh = fishHint(); if (fh) return fh; }
   if (t?.kind === 'node') { const T = NODE_TYPES[t.o.t]; return T.pick ? ['✋', '줍기'] : T.tool === 'axe' ? ['🪓', '벌목'] : ['⛏️', '채광']; }
   if (t?.kind === 'animal') return t.o.kind === 'lumi' && invCount('berry') ? ['🫐', '먹이 주기'] : ['⚔️', '공격'];
   if (t?.kind === 'struct' && t.o.S.act) return ['🤚', t.o.S.act];
@@ -86,6 +88,7 @@ const warn = (m) => { if (G.clock - lastWarn > 1.5) { lastWarn = G.clock; toast(
 export function doAction() {
   if (!G.started || G.paused || G.dead) return;
   if (G.build) return placeBuild();
+  if (fishAction((id) => { gain(id, 1); addXp(id === 'fish_gold' ? 40 : 8); wear(); })) return;
   const p = G.player; if (p.swing > .06) return;
   const t = G.target, eq = equipped(), tool = eq?.tool;
   if (t) p.rot = Math.atan2(t.x - p.pos.x, t.z - p.pos.z);
@@ -127,22 +130,28 @@ function interact(s) {
   else if (s.type === 'workbench') openPanel('craft', 'tool');
   else if (s.type === 'furnace') openPanel('craft', 'mat');
   else if (s.type === 'chest') openPanel('inv', s);
-  else if (s.type === 'tent') sleep(s);
+  else if (s.type === 'tent' || s.type === 'bed') sleep(s);
+  else if (s.type === 'door') { toggleDoor(s); sfx('place'); }
   else if (s.type === 'plot') {
-    if (d.g < 0) { if (invRemove('seed', 1)) { d.g = 0; sfx('place'); toast('🌱 씨앗을 심었습니다'); refreshHotbar(); } else warn('🌱 씨앗이 필요합니다 (억새풀에서 얻을 수 있어요)'); }
-    else if (d.g < 1) toast(`🌱 자라는 중… ${Math.floor(d.g * 100)}%`);
-    else { d.g = -1; gain('carrot', rint(3, 4)); gain('seed', rint(1, 2)); addXp(12); sfx('pick'); emit('harvest'); }
+    if (d.g < 0) { // 손에 든 씨앗을 먼저, 없으면 가방에 있는 아무 씨앗
+      const held = equipped()?.seed ? equipped().id : null, id = held || Object.keys(ITEMS).find(k => ITEMS[k].seed && invCount(k));
+      if (id && invRemove(id, 1)) { plantCrop(s, id); sfx('place'); toast(`${ITEMS[id].icon} ${ITEMS[id].name}을(를) 심었습니다`); refreshHotbar(); }
+      else warn('🌱 씨앗이 필요합니다 (억새풀을 뜯으면 가끔 나와요)');
+    }
+    else if (d.g < 1) toast(`🌱 ${ITEMS[ITEMS[d.crop || 'seed'].seed.out].name} 자라는 중… ${Math.floor(d.g * 100)}%`);
+    else { const id = d.crop || 'seed', sd = ITEMS[id].seed; d.g = -1; gain(sd.out, rint(sd.min, sd.max)); gain(id, rint(1, 2)); addXp(12); sfx('pick'); emit('harvest'); }
   }
 }
 function sleep(s) {
-  G.spawn = { x: s.x + Math.sin(s.rot) * 2.6, z: s.z + Math.cos(s.rot) * 2.6 };
-  if (!(G.tod > .7 || G.tod < .24)) return toast('⛺ 부활 지점을 저장했습니다. 잠은 저녁부터 잘 수 있어요');
-  if (G.animals.some(a => a.kind === 'wolf' && Math.hypot(a.x - s.x, a.z - s.z) < 14)) return warn('🐺 근처에 늑대가 있어 잠들 수 없습니다');
+  const bed = s.type === 'bed';
+  G.spawn = bed ? { x: s.x + Math.cos(s.rot) * 1.4, z: s.z - Math.sin(s.rot) * 1.4 } : { x: s.x + Math.sin(s.rot) * 2.6, z: s.z + Math.cos(s.rot) * 2.6 };
+  if (!(G.tod > .7 || G.tod < .24)) return toast(`${bed ? '🛏️' : '⛺'} 부활 지점을 저장했습니다. 잠은 저녁부터 잘 수 있어요`);
+  if (!(bed && G.indoor) && G.animals.some(a => a.kind === 'wolf' && Math.hypot(a.x - s.x, a.z - s.z) < 14)) return warn('🐺 근처에 늑대가 있어 잠들 수 없습니다');
   const f = document.getElementById('fade'); f.classList.add('on'); G.paused = true;
   setTimeout(() => {
     if (G.tod > .5) G.day++;
     G.tod = .27; const st = G.stats;
-    st.hp = Math.min(st.maxHp, st.hp + 40); st.stamina = st.maxStamina; st.hunger = Math.max(5, st.hunger - 18); st.thirst = Math.max(5, st.thirst - 18); st.temp = 60;
+    st.hp = bed ? st.maxHp : Math.min(st.maxHp, st.hp + 40); st.stamina = st.maxStamina; st.hunger = Math.max(5, st.hunger - 18); st.thirst = Math.max(5, st.thirst - 18); st.temp = 60;
     f.classList.remove('on'); G.paused = false; toast(`☀️ ${G.day}일차 아침이 밝았습니다`, 'big'); emit('sleep'); save();
   }, 1100);
 }
@@ -157,7 +166,7 @@ export function demolish() {
 function placeBuild() {
   const b = G.build; if (!b.ok) return warn('이곳에는 설치할 수 없습니다');
   if (!invRemove(b.type, 1)) return cancelBuild();
-  addStruct(b.type, b.x, b.z, b.rot); sfx('place'); burst(b.x, heightAt(b.x, b.z) + .3, b.z, '#e9dcc0', 10, 2);
+  addStruct(b.type, b.x, b.z, b.rot, null, b.y); sfx('place'); burst(b.x, heightAt(b.x, b.z) + .3, b.z, '#e9dcc0', 10, 2);
   emit('place', b.type); addXp(5); refreshHotbar();
   if (!invCount(b.type)) cancelBuild();
 }
@@ -203,6 +212,7 @@ export function updateStats(dt) {
   if (equipped()?.id === 'torch') tg += 14;
   let fire = 0; for (const s of G.structs) if (s.type === 'campfire' || s.type === 'furnace') fire = Math.max(fire, 1 - Math.hypot(s.x - p.pos.x, s.z - p.pos.z) / 8);
   tg += fire * 55; G.nearFire = fire > 0;
+  if (G.indoor) tg += 20; // 지붕 아래는 따뜻하다
   st.temp = clamp(st.temp + (clamp(tg, 0, 100) - st.temp) * dt * .11, 0, 100);
   // 피해 · 회복
   let dmg = 0, why = '';

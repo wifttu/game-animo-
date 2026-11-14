@@ -6,7 +6,8 @@ import { createWorld, updateWorld, setQuality } from './world.js';
 import { createNodes, updateNodes } from './nodes.js';
 import { createPlayer, updatePlayer, updateCamera } from './player.js';
 import { updateAnimals } from './animals.js';
-import { updateStructs, updateBuild, cancelBuild } from './structs.js';
+import { updateStructs, updateBuild, cancelBuild, rotateBuild } from './structs.js';
+import { updateFishing } from './fishing.js';
 import { initInput, input } from './input.js';
 import { initUI, updateHUD, openPanel, closePanel, panelOpen, refreshHotbar, toast } from './ui.js';
 import { doAction, findTarget, updateStats, gain } from './actions.js';
@@ -19,7 +20,7 @@ import { sfx, startMusic } from './audio.js';
 import './quests.js';
 import { initLayout } from './layout.js';
 
-const VERSION = 7; // 배포할 때마다 올린다 (타이틀 화면에 표시)
+const VERSION = 8; // 배포할 때마다 올린다 (타이틀 화면에 표시)
 const $ = (id) => document.getElementById(id);
 $('ver').textContent = '버전 ' + VERSION;
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -46,14 +47,14 @@ initInput(doAction, (code) => {
   if (code === 'KeyC') panelOpen() ? closePanel() : openPanel('craft');
   if (code === 'KeyQ') panelOpen() ? closePanel() : openPanel('quest');
   if (code === 'Escape') { if (G.build) cancelBuild(); else panelOpen() ? closePanel() : openPanel('menu'); }
-  if (code === 'KeyR' && G.build) G.build.rot += Math.PI / 4;
+  if (code === 'KeyR') rotateBuild();
 });
 
 function start(cont) {
   if (cont) { if (!load()) toast('저장 데이터를 불러오지 못해 새로 시작합니다', 'warn'); } else clearSave();
   $('title').classList.add('hidden'); $('hud').classList.remove('hidden');
   G.started = true; G.paused = false; refreshHotbar(); sfx('quest'); startMusic();
-  if (!cont) { toast('🌴 낯선 섬에 도착했습니다', 'big'); setTimeout(() => toast('🌳 나무에 다가가 행동 버튼을 눌러 통나무를 모으세요'), 1500); }
+  if (!cont) { gain('rod', 1); toast('🌴 낯선 섬에 도착했습니다', 'big'); setTimeout(() => toast('🎣 낚싯대를 들고 물가로 가서 낚시를 해 보세요'), 1500); }
 }
 $('loading').classList.add('hidden');
 $('btnContinue').classList.toggle('hidden', !hasSave());
@@ -70,7 +71,7 @@ function frame() {
   if (!G.paused) {
     G.clock += dt; G.tod += dt / DAY_LEN; if (G.tod >= 1) { G.tod -= 1; G.day++; }
     if (input.action && !G.build) doAction();
-    updatePlayer(dt); updateStats(dt); updateAnimals(dt); updateNodes(dt); updateStructs(dt); updateBuild(); updateFx(dt);
+    updatePlayer(dt); updateStats(dt); updateAnimals(dt); updateNodes(dt); updateStructs(dt); updateBuild(); updateFishing(dt); updateFx(dt);
     if ((tgtT -= dt) < 0) { tgtT = .08; G.target = G.dead ? null : findTarget(); }
     if (p.grounded && p.speed > 1 && Math.floor(p.ph / Math.PI) !== stepPh) { stepPh = Math.floor(p.ph / Math.PI); sfx(p.swim ? 'splash' : 'step'); }
     if ((saveT += dt) > 20) { saveT = 0; save(); }

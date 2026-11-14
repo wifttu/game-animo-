@@ -4,7 +4,7 @@ import { G, clamp, lerp, angLerp } from './util.js';
 import { toolModel } from './geo.js';
 import { heightAt, HALF } from './world.js';
 import { nodePush } from './nodes.js';
-import { structPush } from './structs.js';
+import { structPush, floorTop } from './structs.js';
 import { input } from './input.js';
 import { equipped, ITEMS } from './items.js';
 
@@ -65,7 +65,7 @@ export function updatePlayer(dt) {
   const dc = Math.hypot(o.x, o.z), lim = HALF * .93; if (dc > lim) { o.x *= lim / dc; o.z *= lim / dc; }
   p.pos.x = o.x; p.pos.z = o.z;
   // 점프 · 중력 · 수영
-  const gy = Math.max(heightAt(o.x, o.z), -.95);
+  const gy = Math.max(heightAt(o.x, o.z), -.95, floorTop(o.x, o.z));
   if (input.jump && p.grounded && !p.swim && !G.dead && st.stamina > 6) { p.vy = 7.6; p.grounded = false; st.stamina -= 6; }
   input.jump = false;
   p.vy -= 22 * dt; p.pos.y += p.vy * dt;
@@ -76,6 +76,7 @@ export function updatePlayer(dt) {
   p.legL.rotation.x = sw * .9; p.legR.rotation.x = -sw * .9;
   p.armL.rotation.x = -sw * .8; p.armL.rotation.z = -.12 - idle;
   if (p.swing > 0) { p.swing -= dt; const k = 1 - p.swing / .38; p.armR.rotation.x = -2.4 + Math.sin(k * Math.PI * .9) * 2.7; p.armR.rotation.z = .1; }
+  else if (p.fishing) { p.armR.rotation.x = -1.15 + idle * 2; p.armR.rotation.z = .05; }
   else { p.armR.rotation.x = (p.held ? -.5 : 0) + sw * (p.held ? .3 : .8); p.armR.rotation.z = .12 + idle; }
   p.g.rotation.y = p.rot;
   p.g.rotation.x = G.dead ? -1.45 : p.swim ? .9 : lerp(p.g.rotation.x, clamp(p.speed / 30, 0, .22), .2);
