@@ -2,7 +2,7 @@
 import { G, on, DAY_LEN } from './util.js';
 import { ITEMS, RECIPES, CATS, STATION_NAME, inv, HOTBAR, invCount, invAdd, canCraft } from './items.js';
 import { useSlot, craft, xpNeed, actionHint, demolish, respawn, unequipArmor, doAction } from './actions.js';
-import { stationNear, cancelBuild } from './structs.js';
+import { stationNear, cancelBuild, rotateBuild } from './structs.js';
 import { NODE_TYPES } from './nodes.js';
 import { QUESTS, quest } from './quests.js';
 import { mapCanvas, HALF, SIZE, setQuality } from './world.js';
@@ -111,7 +111,7 @@ function renderPanel() {
       + row('전체 화면', '가로 모드로 플레이하는 것을 추천합니다', `<button class="ghostbtn" data-set="full">⛶ 전환</button>`)
       + row('저장', '게임은 자동으로 저장됩니다', `<button class="ghostbtn" data-set="save">💾 지금 저장</button>`)
       + row('처음부터 다시', '저장된 진행 상황을 모두 지웁니다', `<button class="ghostbtn" data-set="reset">🗑️ 초기화</button>`)
-      + `<p style="opacity:.75;font-size:.9em;line-height:1.7;margin:12px 0 0">🌙 밤에는 춥고 늑대가 나타납니다. 모닥불 곁은 따뜻하고 늑대가 다가오지 못합니다.<br>🏃 조이스틱을 끝까지 밀면 달립니다 (PC: Shift).<br>🫐 루미에게 숲 열매를 3번 주면 함께 다니며 밤길을 밝히고 적과 싸워줍니다.<br>⛏️ 제작 순서: 맨손 벌목 → 판자·막대기·작업대 → 나무 곡괭이 → 돌 → 돌곡괭이 → 철광석(산) → 화로 제련 → 철 도구.</p>`;
+      + `<p style="opacity:.75;font-size:.9em;line-height:1.7;margin:12px 0 0">🌙 밤에는 춥고 늑대가 나타납니다. 모닥불 곁은 따뜻하고 늑대가 다가오지 못합니다.<br>🏃 조이스틱을 끝까지 밀면 달립니다 (PC: Shift).<br>🫐 루미에게 숲 열매를 3번 주면 함께 다니며 밤길을 밝히고 적과 싸워줍니다.<br>🎣 낚싯대를 들고 물가에서 행동 → 찌가 가라앉으면(❗) 한 번 더 누르면 낚입니다.<br>🏠 집: 바닥을 깔고 → 가장자리에 벽과 문 → 바닥 위에 지붕. 지붕 아래는 따뜻합니다.<br>⛏️ 제작 순서: 맨손 벌목 → 판자·막대기·작업대 → 나무 곡괭이 → 돌 → 돌곡괭이 → 철광석(산) → 화로 제련 → 철 도구.</p>`;
   }
   B.scrollTop = keep;
 }
@@ -222,7 +222,7 @@ export function initUI() {
     refreshHotbar();
   });
   $('btnDemolish').addEventListener('click', demolish);
-  $('bRot').addEventListener('click', () => { if (G.build) G.build.rot += Math.PI / 4; });
+  $('bRot').addEventListener('click', rotateBuild);
   $('bCancel').addEventListener('click', cancelBuild);
   $('bPlace').addEventListener('click', doAction);
   $('btnRespawn').addEventListener('click', () => { $('death').classList.add('hidden'); respawn(); });
