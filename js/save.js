@@ -6,7 +6,7 @@ import { addStruct } from './structs.js';
 import { spawnAnimal } from './animals.js';
 import { quest } from './quests.js';
 import { heightAt } from './world.js';
-const KEY = 'lumi-island-save-v1';
+const KEY = 'lumi-island-save-v2'; // v2: 단계형 제작 체계로 개편 (이전 저장과 호환되지 않음)
 
 export const hasSave = () => { try { return !!localStorage.getItem(KEY); } catch { return false; } };
 export const clearSave = () => { try { localStorage.removeItem(KEY); } catch { /* 저장소 사용 불가 */ } };

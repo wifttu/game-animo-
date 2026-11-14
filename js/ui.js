@@ -13,7 +13,7 @@ import { startLayoutEdit, applyLayout } from './layout.js';
 import { setMusic } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
-let panel = null, selSlot = 0, craftCat = 'tool', craftSel = -1, questSel = -1, chest = null;
+let panel = null, selSlot = 0, craftCat = 'mat', craftSel = -1, questSel = -1, chest = null;
 let moving = null, drag = null, dragDone = false; // 아이템 이동 상태: {c:'inv'|'chest', i}
 export const panelOpen = () => !!panel;
 
@@ -23,10 +23,13 @@ export function toast(msg, cls = '') {
   setTimeout(() => d.remove(), 2800);
 }
 
+const tc = (it) => it.tier === 2 ? 't2' : it.tier === 0 ? 't0' : ''; // 도구 재질 표시(철·나무)
+// 같은 모양의 도구를 구분하는 재질 꼬리표 (나무·돌·철)
+const tag = (it) => it.tool && it.tier !== undefined ? `<s class="m${it.tier}">${['나무', '돌', '철'][it.tier]}</s>` : '';
 const slotHTML = (s, i, cls = '', attr = 'data-slot') => {
   if (!s) return `<div class="slot ${cls}" ${attr}="${i}"></div>`;
   const it = ITEMS[s.id], dur = it.tool?.dur ? `<i><u style="width:${s.dur / it.tool.dur * 100}%"></u></i>` : '';
-  return `<div class="slot ${cls} ${it.tier === 2 ? 't2' : ''}" ${attr}="${i}">${it.icon}${s.n > 1 ? `<b>${s.n}</b>` : ''}${dur}</div>`;
+  return `<div class="slot ${cls} ${tc(it)}" ${attr}="${i}">${it.icon}${tag(it)}${s.n > 1 ? `<b>${s.n}</b>` : ''}${dur}</div>`;
 };
 export function refreshHotbar() {
   $('hotbar').innerHTML = inv.slots.slice(0, HOTBAR).map((s, i) => slotHTML(s, i, i === inv.sel ? 'sel' : '')).join('');
@@ -77,13 +80,13 @@ function renderPanel() {
     const r = RECIPES[craftSel], it = ITEMS[r.out], ok = okFn(r);
     const max = Math.min(20, ...Object.entries(r.need).map(([k, n]) => Math.floor(invCount(k) / n)));
     const tiles = list.map(([q, i]) => { const qi = ITEMS[q.out], o = okFn(q);
-      return `<div class="slot rc ${o ? 'ok' : 'no'} ${i === craftSel ? 'sel' : ''} ${qi.tier === 2 ? 't2' : ''}" data-rsel="${i}">${qi.icon}${o ? '<em></em>' : !stOk(q) ? '<kbd>🔒</kbd>' : ''}</div>`; }).join('');
+      return `<div class="slot rc ${o ? 'ok' : 'no'} ${i === craftSel ? 'sel' : ''} ${tc(qi)}" data-rsel="${i}">${qi.icon}${tag(qi)}${o ? '<em></em>' : !stOk(q) ? '<kbd>🔒</kbd>' : ''}</div>`; }).join('');
     const ings = Object.entries(r.need).map(([k, n]) => { const h = invCount(k);
       return `<div class="ing ${h < n ? 'lack' : ''}"><div class="slot">${ITEMS[k].icon}</div><b>${h}/${n}</b><span>${ITEMS[k].name}</span></div>`; }).join('');
     B.innerHTML = `<div class="cwrap"><div class="cleft"><p class="gridcap">만들 물건을 고르세요 · <i class="dot"></i> 지금 제작 가능</p><div class="cgrid">${tiles}</div></div>
       <div class="cdetail"><h3>${it.icon} ${it.name}${r.n > 1 ? ` ×${r.n}` : ''}</h3><p>${it.desc}</p>
         <div class="cbench"><div class="cings">${ings}</div><div class="carrow ${ok ? 'ok' : ''}">➜</div>
-          <div class="ing out"><div class="slot ${ok ? 'sel' : ''} ${it.tier === 2 ? 't2' : ''}">${it.icon}${r.n > 1 ? `<b>${r.n}</b>` : ''}</div><b>결과</b><span>보유 ${invCount(r.out)}</span></div></div>
+          <div class="ing out"><div class="slot ${ok ? 'sel' : ''} ${tc(it)}">${it.icon}${tag(it)}${r.n > 1 ? `<b>${r.n}</b>` : ''}</div><b>결과</b><span>보유 ${invCount(r.out)}</span></div></div>
         ${r.station ? `<div class="cstation ${stOk(r) ? 'ok' : 'no'}">${stOk(r) ? '✔' : '🔒'} ${STATION_NAME[r.station]} 근처에서만 만들 수 있습니다</div>` : ''}
         <div class="acts"><button class="primary" data-craft="${craftSel}" ${ok ? '' : 'disabled'}>제작</button>${max > 1 && ok && it.stack > 1 ? `<button class="ghostbtn" data-craftmax="${max}">최대 ×${max}</button>` : ''}</div>
       </div></div>`;
@@ -108,7 +111,7 @@ function renderPanel() {
       + row('전체 화면', '가로 모드로 플레이하는 것을 추천합니다', `<button class="ghostbtn" data-set="full">⛶ 전환</button>`)
       + row('저장', '게임은 자동으로 저장됩니다', `<button class="ghostbtn" data-set="save">💾 지금 저장</button>`)
       + row('처음부터 다시', '저장된 진행 상황을 모두 지웁니다', `<button class="ghostbtn" data-set="reset">🗑️ 초기화</button>`)
-      + `<p style="opacity:.75;font-size:.9em;line-height:1.7;margin:12px 0 0">🌙 밤에는 춥고 늑대가 나타납니다. 모닥불 곁은 따뜻하고 늑대가 다가오지 못합니다.<br>🏃 조이스틱을 끝까지 밀면 달립니다 (PC: Shift).<br>🫐 루미에게 숲 열매를 3번 주면 함께 다니며 밤길을 밝히고 적과 싸워줍니다.<br>⛏️ 철광석은 고지대(산)에 있습니다. 화로에서 제련하세요.</p>`;
+      + `<p style="opacity:.75;font-size:.9em;line-height:1.7;margin:12px 0 0">🌙 밤에는 춥고 늑대가 나타납니다. 모닥불 곁은 따뜻하고 늑대가 다가오지 못합니다.<br>🏃 조이스틱을 끝까지 밀면 달립니다 (PC: Shift).<br>🫐 루미에게 숲 열매를 3번 주면 함께 다니며 밤길을 밝히고 적과 싸워줍니다.<br>⛏️ 제작 순서: 맨손 벌목 → 판자·막대기·작업대 → 나무 곡괭이 → 돌 → 돌곡괭이 → 철광석(산) → 화로 제련 → 철 도구.</p>`;
   }
   B.scrollTop = keep;
 }

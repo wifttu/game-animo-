@@ -50,7 +50,7 @@ function start(cont) {
   if (cont) { if (!load()) toast('저장 데이터를 불러오지 못해 새로 시작합니다', 'warn'); } else clearSave();
   $('title').classList.add('hidden'); $('hud').classList.remove('hidden');
   G.started = true; G.paused = false; refreshHotbar(); sfx('quest'); startMusic();
-  if (!cont) { toast('🌴 낯선 섬에 도착했습니다', 'big'); setTimeout(() => toast('주변에서 나뭇가지와 돌을 주워보세요'), 1500); }
+  if (!cont) { toast('🌴 낯선 섬에 도착했습니다', 'big'); setTimeout(() => toast('🌳 나무에 다가가 행동 버튼을 눌러 통나무를 모으세요'), 1500); }
 }
 $('loading').classList.add('hidden');
 $('btnContinue').classList.toggle('hidden', !hasSave());

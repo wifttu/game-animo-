@@ -99,11 +99,12 @@ export function doAction() {
     const n = t.o, T = NODE_TYPES[n.t];
     if (T.pick) { const dr = hitNode(n, 99); sfx('pick'); for (const [id, k] of dr) gain(id, k); addXp(T.xp); return; }
     const right = tool?.kind === T.tool;
-    if (T.req && !right) return warn('⛏️ 큰 바위는 곡괭이로 캡니다. 돌은 바닥의 돌멩이를 주워 모으세요');
-    const dr = hitNode(n, right ? tool.power : 3);
+    // 채굴 등급: 바위는 곡괭이(나무 이상), 철광석은 돌곡괭이 이상이 있어야 캘 수 있다
+    if (T.req && !(right && tool.lvl >= T.req)) return warn(T.req >= 2 ? (right ? '⛏️ 나무 곡괭이로는 못 캡니다. 돌곡괭이가 필요합니다' : '⛏️ 철광석은 돌곡괭이 이상으로 캡니다') : '⛏️ 바위는 곡괭이로 캡니다. 작업대에서 나무 곡괭이를 만드세요');
+    const dr = hitNode(n, right ? tool.power : 5);
     sfx(T.tool === 'axe' ? 'chop' : 'mine');
     burst(n.x, n.y + 1.2, n.z, T.tool === 'axe' ? '#b98248' : '#b4b7ba', 6);
-    if (right) wear(); else if (T.tool === 'axe' && Math.random() < .15) toast('🪓 도끼가 있으면 훨씬 빨라요');
+    if (right) wear(); else if (T.tool === 'axe' && Math.random() < .1) toast('🪓 도끼가 있으면 훨씬 빨라요');
     if (dr) { for (const [id, k] of dr) gain(id, k); addXp(T.xp); if (T.tool === 'axe') burst(n.x, n.y + 3, n.z, '#6dbb58', 14, 2); }
   } else if (t.kind === 'animal') {
     const a = t.o;
@@ -124,7 +125,7 @@ function interact(s) {
   const d = s.data;
   if (s.type === 'campfire') openPanel('craft', 'food');
   else if (s.type === 'workbench') openPanel('craft', 'tool');
-  else if (s.type === 'furnace') openPanel('craft', 'smelt');
+  else if (s.type === 'furnace') openPanel('craft', 'mat');
   else if (s.type === 'chest') openPanel('inv', s);
   else if (s.type === 'tent') sleep(s);
   else if (s.type === 'plot') {
