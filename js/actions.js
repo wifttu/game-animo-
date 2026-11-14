@@ -99,7 +99,7 @@ export function doAction() {
     const n = t.o, T = NODE_TYPES[n.t];
     if (T.pick) { const dr = hitNode(n, 99); sfx('pick'); for (const [id, k] of dr) gain(id, k); addXp(T.xp); return; }
     const right = tool?.kind === T.tool;
-    if (T.req && !right) return warn('⛏️ 곡괭이가 필요합니다');
+    if (T.req && !right) return warn('⛏️ 큰 바위는 곡괭이로 캡니다. 돌은 바닥의 돌멩이를 주워 모으세요');
     const dr = hitNode(n, right ? tool.power : 3);
     sfx(T.tool === 'axe' ? 'chop' : 'mine');
     burst(n.x, n.y + 1.2, n.z, T.tool === 'axe' ? '#b98248' : '#b4b7ba', 6);

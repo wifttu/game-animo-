@@ -28,6 +28,7 @@ export function createPlayer() {
   const armL = limb(-.36, 1.22, shirt, .3, .085, skin), armR = limb(.36, 1.22, shirt, .3, .085, skin);
   const legL = limb(-.14, .62, pants, .3, .1, boot), legR = limb(.14, .62, pants, .3, .1, boot);
   const hand = new THREE.Group(); hand.position.set(0, -.44, .04); armR.add(hand);
+  g.rotation.order = 'YXZ'; // 몸을 먼저 진행 방향으로 돌린 뒤 앞으로 숙인다 (옆으로 기울지 않게)
   G.scene.add(g);
   G.player = { g, pos: g.position, rot: 0, vy: 0, grounded: true, vel: new THREE.Vector2(), speed: 0, ph: 0, swing: 0, armL, armR, legL, legR, head, hand, heldId: null, swim: false, sprint: false,
     cam: { yaw: 0, pitch: .5, dist: 9.5 } };
