@@ -51,13 +51,14 @@ export const G = {
   day: 1,
   night: 0,          // 0(낮)..1(밤)
   player: null,
-  stats: { hp: 100, maxHp: 100, hunger: 100, thirst: 100, stamina: 100, maxStamina: 100, temp: 60, level: 1, xp: 0 },
+  stats: { hp: 100, maxHp: 100, hunger: 100, thirst: 100, stamina: 100, maxStamina: 100, temp: 60, level: 1, xp: 0, coins: 0 },
   spawn: { x: 0, z: 4 },
   armor: null,
   structs: [], animals: [], pet: null,
   build: null,       // 건축 모드 상태
   target: null,
-  settings: { sound: true, music: true, quality: 'high', joyFixed: false, btnScale: 1, layout: { land: {}, port: {} } },
+  statics: [],
+  settings: { view: 'top', sound: true, music: true, quality: 'high', joyFixed: false, btnScale: 1, layout: { land: {}, port: {} } },
   editing: false,
 };
 export const DAY_LEN = 540; // 하루 길이(초)

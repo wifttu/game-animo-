@@ -19,6 +19,7 @@ export const ITEMS = {
   herb: { name: '약초', icon: '🌿', desc: '상처에 좋은 풀.' },
   // 음식
   berry: { name: '숲 열매', icon: '🫐', food: { hunger: 8, thirst: 4 }, desc: '새콤달콤한 열매. 루미가 좋아한다.' },
+  cactus_fruit: { name: '선인장 열매', icon: '🍈', food: { thirst: 16, hunger: 4 }, desc: '사막에서 갈증을 달래 준다.' },
   mushroom: { name: '버섯', icon: '🍄', food: { hunger: 6 }, desc: '구워 먹으면 더 든든하다.' },
   carrot: { name: '당근', icon: '🥕', food: { hunger: 14, thirst: 3 }, desc: '텃밭에서 기른 당근.' },
   potato: { name: '감자', icon: '🥔', food: { hunger: 8 }, desc: '구워 먹으면 든든하다.' },

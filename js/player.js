@@ -5,6 +5,7 @@ import { toolModel } from './geo.js';
 import { heightAt, HALF } from './world.js';
 import { nodePush } from './nodes.js';
 import { structPush, floorTop } from './structs.js';
+import { platformTop } from './outposts.js';
 import { input } from './input.js';
 import { equipped, ITEMS } from './items.js';
 
@@ -32,9 +33,13 @@ export function createPlayer() {
   G.scene.add(g);
   G.player = { g, pos: g.position, rot: 0, vy: 0, grounded: true, vel: new THREE.Vector2(), speed: 0, ph: 0, swing: 0, armL, armR, legL, legR, head, hand, heldId: null, swim: false, sprint: false,
     cam: { yaw: 0, pitch: .5, dist: 9.5 } };
+  applyView();
   g.position.set(G.spawn.x, heightAt(G.spawn.x, G.spawn.z), G.spawn.z);
   return G.player;
 }
+
+// 시점 방식: top = 위에서 내려다보는 쿼터뷰(기본), free = 어깨 뒤 자유 시점
+export function applyView() { const c = G.player.cam, top = G.settings.view !== 'free'; c.pitch = top ? 1.0 : .5; c.dist = top ? 23 : 9.5; }
 
 function syncHeld(p) {
   const s = equipped(), id = s && s.tool ? s.id : null;
@@ -65,7 +70,7 @@ export function updatePlayer(dt) {
   const dc = Math.hypot(o.x, o.z), lim = HALF * .93; if (dc > lim) { o.x *= lim / dc; o.z *= lim / dc; }
   p.pos.x = o.x; p.pos.z = o.z;
   // 점프 · 중력 · 수영
-  const gy = Math.max(heightAt(o.x, o.z), -.95, floorTop(o.x, o.z));
+  const gy = Math.max(heightAt(o.x, o.z), -.95, floorTop(o.x, o.z), platformTop(o.x, o.z));
   if (input.jump && p.grounded && !p.swim && !G.dead && st.stamina > 6) { p.vy = 7.6; p.grounded = false; st.stamina -= 6; }
   input.jump = false;
   p.vy -= 22 * dt; p.pos.y += p.vy * dt;
@@ -87,8 +92,9 @@ export function updatePlayer(dt) {
 const tgt = new THREE.Vector3(), want = new THREE.Vector3();
 export function updateCamera(dt, snap) {
   const p = G.player, c = p.cam;
-  c.yaw -= input.lookX * .0052; c.pitch = clamp(c.pitch + input.lookY * .004, .06, 1.35); input.lookX = input.lookY = 0;
-  c.dist = clamp(c.dist * (1 + input.zoom), 4.5, 17); input.zoom = 0;
+  const top = G.settings.view !== 'free';
+  c.yaw -= input.lookX * .0052; c.pitch = clamp(c.pitch + input.lookY * .004, top ? .8 : .06, top ? 1.25 : 1.35); input.lookX = input.lookY = 0;
+  c.dist = clamp(c.dist * (1 + input.zoom), top ? 13 : 4.5, top ? 36 : 17); input.zoom = 0;
   tgt.set(p.pos.x, p.pos.y + 1.55, p.pos.z);
   const cp = Math.cos(c.pitch);
   want.set(tgt.x + Math.sin(c.yaw) * cp * c.dist, tgt.y + Math.sin(c.pitch) * c.dist, tgt.z + Math.cos(c.yaw) * cp * c.dist);

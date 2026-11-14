@@ -5,6 +5,7 @@ import { animalModel } from './geo.js';
 import { heightAt, slopeAt, HALF } from './world.js';
 import { structPush } from './structs.js';
 import { nodePush } from './nodes.js';
+import { OUTPOSTS } from './world.js';
 
 export const ANIMALS = {
   rabbit: { name: '토끼', hp: 18, walk: 1.8, run: 6.3, flee: 8, cap: 5, xp: 8, drops: [['meat', 1, 1], ['hide', 0, 1]] },
@@ -53,7 +54,7 @@ function trySpawn() {
   }
 }
 
-const fireNear = (x, z, r) => G.structs.find(s => s.type === 'campfire' && Math.hypot(s.x - x, s.z - z) < r);
+const fireNear = (x, z, r) => G.structs.find(s => s.type === 'campfire' && Math.hypot(s.x - x, s.z - z) < r) || OUTPOSTS.find(o => Math.hypot(o.x - x, o.z - z) < r + 8);
 
 export function updateAnimals(dt) {
   if ((spawnT -= dt) < 0) { spawnT = 1.5; trySpawn(); }

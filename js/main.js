@@ -8,6 +8,7 @@ import { createPlayer, updatePlayer, updateCamera } from './player.js';
 import { updateAnimals } from './animals.js';
 import { updateStructs, updateBuild, cancelBuild, rotateBuild } from './structs.js';
 import { updateFishing } from './fishing.js';
+import { createOutposts, updateOutposts } from './outposts.js';
 import { initInput, input } from './input.js';
 import { initUI, updateHUD, openPanel, closePanel, panelOpen, refreshHotbar, toast } from './ui.js';
 import { doAction, findTarget, updateStats, gain } from './actions.js';
@@ -20,7 +21,7 @@ import { sfx, startMusic } from './audio.js';
 import './quests.js';
 import { initLayout } from './layout.js';
 
-const VERSION = 8; // 배포할 때마다 올린다 (타이틀 화면에 표시)
+const VERSION = 9; // 배포할 때마다 올린다 (타이틀 화면에 표시)
 const $ = (id) => document.getElementById(id);
 $('ver').textContent = '버전 ' + VERSION;
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -32,13 +33,13 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure
 G.scene = new THREE.Scene();
 G.camera = new THREE.PerspectiveCamera(55, 1, .3, 3000);
 let usePost = false;
-const resize = () => { renderer.setSize(innerWidth, innerHeight, false); resizePost(innerWidth, innerHeight, renderer.getPixelRatio()); G.camera.aspect = innerWidth / innerHeight; G.camera.fov = innerWidth < innerHeight ? 68 : 55; G.camera.updateProjectionMatrix(); };
+const resize = () => { renderer.setSize(innerWidth, innerHeight, false); resizePost(innerWidth, innerHeight, renderer.getPixelRatio()); G.camera.aspect = innerWidth / innerHeight; G.camera.fov = G.settings.view !== 'free' ? (innerWidth < innerHeight ? 52 : 38) : (innerWidth < innerHeight ? 68 : 55); G.camera.updateProjectionMatrix(); };
 addEventListener('resize', resize);
 
 createWorld(); initPost();
 on('quality', (q) => { usePost = q === 'high' && hasPost(); resize(); });
 setQuality(G.settings.quality);
-createNodes(); createPlayer();
+createNodes(); createPlayer(); createOutposts();
 initUI(); initLayout();
 initInput(doAction, (code) => {
   if (!G.started) return;
@@ -54,7 +55,7 @@ function start(cont) {
   if (cont) { if (!load()) toast('저장 데이터를 불러오지 못해 새로 시작합니다', 'warn'); } else clearSave();
   $('title').classList.add('hidden'); $('hud').classList.remove('hidden');
   G.started = true; G.paused = false; refreshHotbar(); sfx('quest'); startMusic();
-  if (!cont) { gain('rod', 1); toast('🌴 낯선 섬에 도착했습니다', 'big'); setTimeout(() => toast('🎣 낚싯대를 들고 물가로 가서 낚시를 해 보세요'), 1500); }
+  if (!cont) { gain('rod', 1); toast('🌴 낯선 섬에 도착했습니다', 'big'); setTimeout(() => toast('🎣 낚싯대를 들고 물가로 가서 낚시를 해 보세요'), 1500); setTimeout(() => toast('🪙 미니맵의 노란 표식은 상인이 있는 마을입니다'), 4500); }
 }
 $('loading').classList.add('hidden');
 $('btnContinue').classList.toggle('hidden', !hasSave());
@@ -71,7 +72,7 @@ function frame() {
   if (!G.paused) {
     G.clock += dt; G.tod += dt / DAY_LEN; if (G.tod >= 1) { G.tod -= 1; G.day++; }
     if (input.action && !G.build) doAction();
-    updatePlayer(dt); updateStats(dt); updateAnimals(dt); updateNodes(dt); updateStructs(dt); updateBuild(); updateFishing(dt); updateFx(dt);
+    updatePlayer(dt); updateStats(dt); updateAnimals(dt); updateNodes(dt); updateStructs(dt); updateBuild(); updateFishing(dt); updateOutposts(); updateFx(dt);
     if ((tgtT -= dt) < 0) { tgtT = .08; G.target = G.dead ? null : findTarget(); }
     if (p.grounded && p.speed > 1 && Math.floor(p.ph / Math.PI) !== stepPh) { stepPh = Math.floor(p.ph / Math.PI); sfx(p.swim ? 'splash' : 'step'); }
     if ((saveT += dt) > 20) { saveT = 0; save(); }
