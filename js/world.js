@@ -3,20 +3,41 @@ import * as THREE from 'three';
 import { G, clamp, lerp, smooth, makeNoise, rng, emit } from './util.js';
 import { DECOR_GEO, FOLIAGE, windU } from './geo.js';
 
-export const SIZE = 460, SEG = 230, HALF = SIZE / 2;
+export const SIZE = 920, SEG = 460, HALF = SIZE / 2, MAIN = 230; // MAIN = 본섬이 들어 있는 영역의 반지름
+// 섬 목록. 0번은 본섬(기존 지형 그대로), 나머지는 배로 건너가는 섬
+export const ISLES = [
+  { name: '루미 본섬', x: 0, z: 0, r: MAIN },
+  { name: '서리섬', x: 70, z: -340, r: 100, biome: 'snow', peak: 26 },
+  { name: '붉은모래섬', x: -335, z: -40, r: 100, biome: 'desert', rough: 8, peak: 10 },
+  { name: '달빛섬', x: 275, z: 255, r: 105, rough: 14 },
+  { name: '산호섬', x: -150, z: 325, r: 78, rough: 8 },
+];
+export function regionOf(x, z) { for (let i = 1; i < ISLES.length; i++) { const I = ISLES[i]; if (Math.hypot(x - I.x, z - I.z) < I.r * 1.25) return i; } return 0; }
 const N = SEG + 1, H = new Float32Array(N * N);
 const noise = makeNoise(31337), noise2 = makeNoise(77);
 const fbm = (x, z, o) => { let a = 1, f = 1, s = 0, n = 0; for (let i = 0; i < o; i++) { s += noise(x * f, z * f) * a; n += a; a *= .5; f *= 2; } return s / n; };
 
+function isleHeight(I, x, z) {
+  const d = Math.hypot(x - I.x, z - I.z); if (d > I.r * 1.2) return -9;
+  let e = 4.5 + fbm(x * .009 + I.x * .37, z * .009 + I.z * .37, 4) * (I.rough || 12);
+  if (I.peak) { const ridge = 1 - Math.abs(noise(x * .014 + I.x, z * .014)) * .9; e += smooth(I.r * .75, I.r * .15, d) * ridge * ridge * I.peak; }
+  e += noise(x * .06, z * .06) * .35;
+  return lerp(e, -9, smooth(.58, .97, d / I.r + noise(x * .011 + I.z, z * .011) * .12));
+}
 function rawHeight(x, z) {
-  const d = Math.hypot(x, z);
+  let e = mainHeight(x, z);
+  for (let i = 1; i < ISLES.length; i++) e = Math.max(e, isleHeight(ISLES[i], x, z));
+  return e;
+}
+function mainHeight(x, z) {
+  const d = Math.hypot(x, z); if (d > MAIN * 1.2) return -9;
   let e = 5.5 + fbm(x * .007, z * .007, 4) * 15;
   const m = smooth(.08, .5, fbm(x * .0042 + 31, z * .0042 - 17, 2)) * smooth(75, 140, d);
   const ridge = 1 - Math.abs(noise(x * .011 + 9, z * .011 + 3)) * .9;
   e += m * (8 + ridge * ridge * 32);
   e += noise(x * .06, z * .06) * .35;
   e = lerp(e, 3.2, smooth(48, 10, d) * .92);
-  e = lerp(e, -9, smooth(.6, .95, d / HALF + noise(x * .009 + 5, z * .009) * .1));
+  e = lerp(e, -9, smooth(.6, .95, d / MAIN + noise(x * .009 + 5, z * .009) * .1));
   return e;
 }
 export function heightAt(x, z) {
@@ -29,14 +50,15 @@ export function slopeAt(x, z) {
 }
 // 기후 지역: [설원 정도, 사막 정도] (0..1). 북쪽(-z)은 설원, 서쪽(-x)은 사막
 export function biomeAt(x, z) {
+  const rg = regionOf(x, z); if (rg) { const b = ISLES[rg].biome; return [b === 'snow' ? 1 : 0, b === 'desert' ? 1 : 0]; }
   const n = noise2(x * .01 + 40, z * .01 - 7) * 26, snow = smooth(-58, -98, z + n);
   return [snow, smooth(-70, -110, x + n * .8) * (1 - snow)];
 }
 export const OUTPOSTS = []; // 마을 위치: { kind, x, y, z, rot }
 function findOutposts() {
   // 중심에서 바깥으로 훑으며 '평평하고 물가에 가까운 땅'을 찾는다
-  const ray = (a, ok, minD = 45) => { let best = null;
-    for (let d = minD; d < 215; d += 2) { const x = Math.sin(a) * d, z = Math.cos(a) * d, h = heightAt(x, z);
+  const ray = (a, ok, minD = 45, ox = 0, oz = 0, maxD = 215) => { let best = null;
+    for (let d = minD; d < maxD; d += 2) { const x = ox + Math.sin(a) * d, z = oz + Math.cos(a) * d, h = heightAt(x, z);
       if (h < .2) { if (best) break; continue; }
       if (h > 1.7 && h < 7 && slopeAt(x, z) < .22 && ok(x, z)) { best = { x, z, y: h, rot: a }; if (!ok.shore) break; } }
     return best; };
@@ -47,6 +69,17 @@ function findOutposts() {
   pick('farm', sweep(0), grass, 70);
   pick('lodge', sweep(Math.PI), (x, z) => biomeAt(x, z)[0] > .7, 80);
   pick('bazaar', sweep(-Math.PI / 2), (x, z) => biomeAt(x, z)[1] > .7, 90);
+  OUTPOSTS.forEach(o => { o.isle = 0; });
+  // 항구는 반드시 바다와 맞닿아야 하므로, 바다 쪽에서 섬 안쪽으로 훑어 처음 만나는 평평한 물가를 고른다
+  const coast = (a, ox, oz, R, ok) => { let land = -1;
+    for (let d = R; d > R * .3; d -= 2) { const x = ox + Math.sin(a) * d, z = oz + Math.cos(a) * d, h = heightAt(x, z);
+      if (h > .2 && land < 0) land = d;
+      if (land >= 0) { if (land - d > 24) return null; if (h > 1.7 && h < 7 && slopeAt(x, z) < .22 && (!ok || ok(x, z))) return { x, z, y: h, rot: a }; } }
+    return null; };
+  const harbor = (kind, isle, angles, ok) => { const I = ISLES[isle];
+    for (const a of angles) { const o = coast(a, I.x, I.z, I.r * 1.15, ok); if (o && !OUTPOSTS.some(q => Math.hypot(q.x - o.x, q.z - o.z) < 45)) { OUTPOSTS.push({ kind, ...o, port: true, isle, late: isle === 0 }); return; } } };
+  harbor('harbor', 0, [.75, .5, 1, .25, 1.3, 0, 2, 2.4, -.4, -.9, 2.8], grass);
+  ['ice', 'dune', 'moon', 'coral'].forEach((kind, k) => { const I = ISLES[k + 1]; harbor(kind, k + 1, sweep(Math.atan2(-I.x, -I.z)).concat(sweep(Math.atan2(I.x, I.z)))); });
 }
 export const forestAt = (x, z) => noise2(x * .012, z * .012) + noise2(x * .04, z * .04) * .3;
 
@@ -71,27 +104,24 @@ export let mapCanvas;
 export function createWorld() {
   const scene = G.scene;
   // ── 지형
-  const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG); geo.rotateX(-Math.PI / 2);
-  const pos = geo.attributes.position;
-  for (let i = 0; i < pos.count; i++) { H[i] = rawHeight(pos.getX(i), pos.getZ(i)); pos.setY(i, H[i]); }
+  const cell = SIZE / SEG, PX = (i) => -HALF + (i % N) * cell, PZ = (i) => -HALF + Math.floor(i / N) * cell;
+  for (let i = 0; i < N * N; i++) H[i] = rawHeight(PX(i), PZ(i));
   findOutposts();
-  const col = new Float32Array(pos.count * 3), c = new THREE.Color();
+  const col = new Float32Array(N * N * 3), c = new THREE.Color();
   mapCanvas = document.createElement('canvas'); mapCanvas.width = mapCanvas.height = N;
   const mctx = mapCanvas.getContext('2d'), img = mctx.createImageData(N, N);
   const hTex = new Uint8Array(N * N * 4);
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i), z = pos.getZ(i), h = H[i];
-    terrainColor(x, z, h, slopeAt(x, z), c);
-    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+  for (let i = 0; i < N * N; i++) {
+    const x = PX(i), z = PZ(i), h = H[i];
     hTex[i * 4] = clamp((h + 8) / 16, 0, 1) * 255; hTex[i * 4 + 3] = 255;
+    if (h > -8.9) terrainColor(x, z, h, slopeAt(x, z), c); else c.copy(cSea);
+    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
     if (h < 0) c.setRGB(.18, .5, .72).lerp(tmp.setRGB(.08, .26, .5), smooth(0, -6, h));
     c.convertLinearToSRGB();
     const sh = 1 + clamp((h - (H[i + 1] ?? h)) * .12, -.25, .25);
     img.data[i * 4] = c.r * 255 * sh; img.data[i * 4 + 1] = c.g * 255 * sh; img.data[i * 4 + 2] = c.b * 255 * sh; img.data[i * 4 + 3] = 255;
   }
   mctx.putImageData(img, 0, 0);
-  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  geo.computeVertexNormals();
   // 지형 디테일 질감: 부드러운 얼룩 + 고운 입자 (타일링되도록 가장자리를 감싸 그린다)
   const dc = document.createElement('canvas'); dc.width = dc.height = 256; const dx = dc.getContext('2d'), dr = rng(11);
   dx.fillStyle = '#eeeeee'; dx.fillRect(0, 0, 256, 256);
@@ -106,11 +136,26 @@ export function createWorld() {
   const di = dx.getImageData(0, 0, 256, 256);
   for (let i = 0; i < di.data.length; i += 4) { const k = (dr() - .5) * 26; di.data[i] += k; di.data[i + 1] += k; di.data[i + 2] += k; }
   dx.putImageData(di, 0, 0);
-  const detail = new THREE.CanvasTexture(dc); detail.wrapS = detail.wrapT = THREE.RepeatWrapping; detail.repeat.set(SIZE / 9, SIZE / 9);
+  const detail = new THREE.CanvasTexture(dc); detail.wrapS = detail.wrapT = THREE.RepeatWrapping; 
   detail.colorSpace = THREE.SRGBColorSpace; detail.anisotropy = 4;
   for (let i = 0; i < col.length; i++) col[i] *= 1.16;
-  const terrain = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, map: detail }));
-  terrain.receiveShadow = true; scene.add(terrain);
+  // 지형은 조각(청크)으로 나눠 만들어 화면에 보이는 부분만 그린다. 깊은 바다뿐인 조각은 생략
+  const tmat = new THREE.MeshLambertMaterial({ vertexColors: true, map: detail }), CH = 46, n1 = CH + 1, idx = [];
+  for (let j = 0; j < CH; j++) for (let i = 0; i < CH; i++) { const a = j * n1 + i, b2 = a + 1, c2 = a + n1; idx.push(a, c2, b2, b2, c2, c2 + 1); }
+  for (let cz = 0; cz < SEG; cz += CH) for (let cx = 0; cx < SEG; cx += CH) {
+    const P = new Float32Array(n1 * n1 * 3), C = new Float32Array(n1 * n1 * 3), Nn = new Float32Array(n1 * n1 * 3), U = new Float32Array(n1 * n1 * 2); let top = -99, k = 0;
+    for (let j = 0; j < n1; j++) for (let i = 0; i < n1; i++, k++) {
+      const gx = cx + i, gz = cz + j, gi = gz * N + gx, x = -HALF + gx * cell, z = -HALF + gz * cell, h = H[gi]; if (h > top) top = h;
+      P.set([x, h, z], k * 3); C.set([col[gi * 3], col[gi * 3 + 1], col[gi * 3 + 2]], k * 3); U.set([x / 9, z / 9], k * 2);
+      const hx = H[gz * N + Math.min(SEG, gx + 1)] - H[gz * N + Math.max(0, gx - 1)], hz = H[Math.min(SEG, gz + 1) * N + gx] - H[Math.max(0, gz - 1) * N + gx], l = Math.hypot(hx, 2 * cell, hz);
+      Nn.set([-hx / l, 2 * cell / l, -hz / l], k * 3);
+    }
+    if (top < -6) continue;
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(P, 3)); g.setAttribute('color', new THREE.BufferAttribute(C, 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(Nn, 3)); g.setAttribute('uv', new THREE.BufferAttribute(U, 2)); g.setIndex(idx);
+    const m = new THREE.Mesh(g, tmat); m.receiveShadow = true; scene.add(m);
+  }
+  const bed = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ color: cSea })); bed.position.y = -9.05; scene.add(bed);
 
   // ── 물 (지형 높이맵으로 수심·물거품 표현)
   const ht = new THREE.DataTexture(hTex, N, N, THREE.RGBAFormat);
@@ -224,21 +269,25 @@ export function createWorld() {
     s.fragmentShader = s.fragmentShader.replace('#include <normal_fragment_begin>', 'vec3 normal=normalize(vNormal); vec3 nonPerturbedNormal=normal;');
   };
   const dm = new THREE.Object3D(), gc = new THREE.Color();
-  const scatter = (geo, mat, count, rule, tint, sMin, sMax, shadow) => {
+  // 섬마다 따로 인스턴스 묶음을 만들어, 화면 밖의 섬은 통째로 그리지 않는다
+  const scatter = (geo, mat, count, rule, tint, sMin, sMax, I) => {
+    const half = I.r * .92; count = Math.round(count * Math.min(1, (I.r / 200) ** 2));
     const im = new THREE.InstancedMesh(geo, mat, count); let n = 0, guard = 0;
     while (n < count && guard++ < count * 30) {
-      const x = (r() - .5) * SIZE * .92, z = (r() - .5) * SIZE * .92, h = heightAt(x, z);
+      const x = I.x + (r() - .5) * 2 * half, z = I.z + (r() - .5) * 2 * half, h = heightAt(x, z);
       if (!rule(x, z, h)) continue;
       dm.position.set(x, h - .03, z); dm.rotation.set(0, r() * 6.28, 0); dm.scale.setScalar(lerp(sMin, sMax, r())); dm.updateMatrix();
       im.setMatrixAt(n, dm.matrix); im.setColorAt(n, tint(gc, r(), x, z)); n++;
     }
-    im.count = n; im.castShadow = !!shadow; im.receiveShadow = true; im.frustumCulled = false; scene.add(im); return im;
+    if (!n) return; im.count = n; im.receiveShadow = true; im.computeBoundingSphere(); scene.add(im);
   };
   const meadow = (x, z, h) => { if (!(h > 1.6 && h < 21 && slopeAt(x, z) < .6)) return false; const b = biomeAt(x, z); return b[0] + b[1] < .35 && !OUTPOSTS.some(o => Math.hypot(o.x - x, o.z - z) < 7); };
-  scatter(DECOR_GEO.grass(), grassMat, G.settings.quality === 'low' ? 8000 : 24000, (x, z, h) => meadow(x, z, h) && noise(x * .05, z * .05) > -.2,
-    (c, t, x, z) => c.set('#6fc24c').lerp(tmp.set('#a4dc62'), t).lerp(tmp.set('#4a9a48'), smooth(-.05, .3, forestAt(x, z)) * .6), .7, 1.5);
-  const fcols = ['#ffffff', '#ffd9ec', '#fff1a8', '#c8d8ff', '#ffb3b3'];
-  scatter(DECOR_GEO.flower(), FOLIAGE, 1400, (x, z, h) => meadow(x, z, h) && noise2(x * .03, z * .03) > .12, (c, t) => c.set(fcols[(t * 5) | 0]), .9, 1.6);
+  const grassGeo = DECOR_GEO.grass(), flowerGeo = DECOR_GEO.flower(), fcols = ['#ffffff', '#ffd9ec', '#fff1a8', '#c8d8ff', '#ffb3b3'];
+  for (const I of ISLES) {
+    scatter(grassGeo, grassMat, G.settings.quality === 'low' ? 8000 : 24000, (x, z, h) => meadow(x, z, h) && noise(x * .05, z * .05) > -.2,
+      (c, t, x, z) => c.set('#6fc24c').lerp(tmp.set('#a4dc62'), t).lerp(tmp.set('#4a9a48'), smooth(-.05, .3, forestAt(x, z)) * .6), .7, 1.5, I);
+    scatter(flowerGeo, FOLIAGE, 1400, (x, z, h) => meadow(x, z, h) && noise2(x * .03, z * .03) > .12, (c, t) => c.set(fcols[(t * 5) | 0]), .9, 1.6, I);
+  }
 
   // ── 반딧불이(밤) / 떠다니는 꽃가루(낮)
   const fc = document.createElement('canvas'); fc.width = fc.height = 32; const fx2 = fc.getContext('2d'), fg = fx2.createRadialGradient(16, 16, 0, 16, 16, 16);
