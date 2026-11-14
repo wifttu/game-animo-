@@ -13,7 +13,7 @@ import { startLayoutEdit, applyLayout } from './layout.js';
 import { setMusic } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
-let panel = null, selSlot = 0, craftCat = 'tool', chest = null;
+let panel = null, selSlot = 0, craftCat = 'tool', craftSel = -1, questSel = -1, chest = null;
 export const panelOpen = () => !!panel;
 
 export function toast(msg, cls = '') {
@@ -36,7 +36,8 @@ export function refreshHotbar() {
 export function openPanel(name, arg) {
   if (G.dead || !G.started || G.editing) return;
   cancelBuild(); panel = name; chest = name === 'inv' && arg?.data ? arg : null;
-  if (name === 'craft' && typeof arg === 'string') craftCat = arg;
+  if (name === 'craft' && typeof arg === 'string') { craftCat = arg; craftSel = -1; }
+  if (name === 'quest') questSel = -1;
   $('panel').classList.remove('hidden'); G.paused = true; sfx('ui'); renderPanel();
 }
 export function closePanel() { if (!panel) return; panel = null; chest = null; $('panel').classList.add('hidden'); G.paused = false; save(); }
@@ -64,20 +65,34 @@ function renderPanel() {
       <p class="gridcap" style="margin-top:8px">윗줄 6칸이 단축 슬롯입니다 · 착용 중: ${G.armor ? `${ITEMS[G.armor].icon} ${ITEMS[G.armor].name} <button class="chip" data-act="unarmor">벗기</button>` : '없음'}</p></div>
       <div class="detail">${it ? `<div class="big">${it.icon}</div><h3>${it.name}${s.n > 1 ? ` ×${s.n}` : ''}</h3><p>${it.desc}</p>${st}${fd}<div class="acts">${acts}</div>` : '<p>아이템을 선택하세요.</p>'}</div></div>`;
   } else if (panel === 'craft') {
+    // 레시피 격자에서 고르면 오른쪽에 '재료 칸 → 결과 칸'이 나타나는 방식
     T.textContent = '제작';
     tabs.innerHTML = CATS.map(([k, n]) => `<button data-cat="${k}" class="${k === craftCat ? 'on' : ''}">${n}</button>`).join('');
-    B.innerHTML = RECIPES.map((r, i) => {
-      if (r.cat !== craftCat) return '';
-      const it = ITEMS[r.out], stOk = !r.station || stationNear(r.station), ok = stOk && canCraft(r);
-      const chips = Object.entries(r.need).map(([k, n]) => `<span class="chip ${invCount(k) < n ? 'no' : ''}">${ITEMS[k].icon} ${ITEMS[k].name} ${invCount(k)}/${n}</span>`).join('');
-      return `<div class="recipe ${ok ? '' : 'no'}"><div class="ic ${it.tier === 2 ? 't2' : ''}">${it.icon}</div><div class="info"><h4>${it.name}${r.n > 1 ? ` ×${r.n}` : ''} <small>${it.desc}</small></h4>
-        <div class="chips">${r.station ? `<span class="chip ${stOk ? 'st' : 'no'}">${stOk ? '✔' : '✖'} ${STATION_NAME[r.station]} 필요</span>` : ''}${chips}</div></div>
-        <button class="primary" data-craft="${i}" ${ok ? '' : 'disabled'}>제작</button></div>`;
-    }).join('');
+    const list = RECIPES.map((r, i) => [r, i]).filter(([r]) => r.cat === craftCat);
+    const stOk = (r) => !r.station || stationNear(r.station), okFn = (r) => stOk(r) && canCraft(r);
+    if (!list.some(([, i]) => i === craftSel)) craftSel = (list.find(([r]) => okFn(r)) || list[0])[1];
+    const r = RECIPES[craftSel], it = ITEMS[r.out], ok = okFn(r);
+    const max = Math.min(20, ...Object.entries(r.need).map(([k, n]) => Math.floor(invCount(k) / n)));
+    const tiles = list.map(([q, i]) => { const qi = ITEMS[q.out], o = okFn(q);
+      return `<div class="slot rc ${o ? 'ok' : 'no'} ${i === craftSel ? 'sel' : ''} ${qi.tier === 2 ? 't2' : ''}" data-rsel="${i}">${qi.icon}${o ? '<em></em>' : !stOk(q) ? '<kbd>🔒</kbd>' : ''}</div>`; }).join('');
+    const ings = Object.entries(r.need).map(([k, n]) => { const h = invCount(k);
+      return `<div class="ing ${h < n ? 'lack' : ''}"><div class="slot">${ITEMS[k].icon}</div><b>${h}/${n}</b><span>${ITEMS[k].name}</span></div>`; }).join('');
+    B.innerHTML = `<div class="cwrap"><div class="cleft"><p class="gridcap">만들 물건을 고르세요 · <i class="dot"></i> 지금 제작 가능</p><div class="cgrid">${tiles}</div></div>
+      <div class="cdetail"><h3>${it.icon} ${it.name}${r.n > 1 ? ` ×${r.n}` : ''}</h3><p>${it.desc}</p>
+        <div class="cbench"><div class="cings">${ings}</div><div class="carrow ${ok ? 'ok' : ''}">➜</div>
+          <div class="ing out"><div class="slot ${ok ? 'sel' : ''} ${it.tier === 2 ? 't2' : ''}">${it.icon}${r.n > 1 ? `<b>${r.n}</b>` : ''}</div><b>결과</b><span>보유 ${invCount(r.out)}</span></div></div>
+        ${r.station ? `<div class="cstation ${stOk(r) ? 'ok' : 'no'}">${stOk(r) ? '✔' : '🔒'} ${STATION_NAME[r.station]} 근처에서만 만들 수 있습니다</div>` : ''}
+        <div class="acts"><button class="primary" data-craft="${craftSel}" ${ok ? '' : 'disabled'}>제작</button>${max > 1 && ok && it.stack > 1 ? `<button class="ghostbtn" data-craftmax="${max}">최대 ×${max}</button>` : ''}</div>
+      </div></div>`;
   } else if (panel === 'quest') {
     T.textContent = '목표';
-    B.innerHTML = QUESTS.map((q, i) => `<div class="qrow ${i < quest.i ? 'done' : i === quest.i ? 'cur' : ''}"><span>${i < quest.i ? '✅' : i === quest.i ? '👉' : '🔒'}</span>
-      <div><b>${i <= quest.i ? q.t : '???'}${i === quest.i && q.need > 1 ? ` (${quest.n}/${q.need})` : ''}</b>${i <= quest.i ? `<p>${q.d}</p>` : ''}</div></div>`).join('');
+    questSel = Math.min(questSel < 0 ? quest.i : questSel, QUESTS.length - 1, quest.i);
+    const q = QUESTS[questSel], done = questSel < quest.i, n = done ? q.need : quest.n;
+    const tiles = QUESTS.map((x, i) => `<div class="slot qt ${i < quest.i ? 'done' : i === quest.i ? 'cur' : 'lock'} ${i === questSel ? 'sel' : ''}" data-qsel="${i}">${i < quest.i ? '✓' : i === quest.i ? i + 1 : '🔒'}</div>`).join('');
+    B.innerHTML = `<div class="qcard ${done ? 'done' : ''}"><small>${done ? '완료한 목표' : '현재 목표'} · ${questSel + 1} / ${QUESTS.length}</small><h3>${q.t}</h3><p>${q.d}</p>
+        <div class="qbar"><u style="width:${n / q.need * 100}%"></u></div><div class="qmeta"><span>${done ? '달성 완료 ✅' : `진행 ${n} / ${q.need}`}</span><span>보상 ⭐ 경험치 ${q.xp}</span></div></div>
+      <p class="gridcap">전체 진행 ${Math.min(quest.i, QUESTS.length)} / ${QUESTS.length} · 완료한 목표를 누르면 다시 볼 수 있습니다</p><div class="qgrid">${tiles}</div>
+      ${quest.i >= QUESTS.length ? '<p style="text-align:center">🎉 모든 목표를 달성했습니다!</p>' : ''}`;
   } else if (panel === 'menu') {
     T.textContent = '설정';
     const row = (t, d, b) => `<div class="setrow"><div><b>${t}</b><p>${d}</p></div>${b}</div>`;
@@ -97,11 +112,14 @@ function renderPanel() {
 
 let resetArmed = 0;
 function panelClick(e) {
-  const t = e.target.closest('[data-slot],[data-chest],[data-act],[data-cat],[data-craft],[data-set]'); if (!t) return;
+  const t = e.target.closest('[data-slot],[data-chest],[data-act],[data-cat],[data-craft],[data-craftmax],[data-rsel],[data-qsel],[data-set]'); if (!t) return;
   const d = t.dataset;
   if (d.slot !== undefined) { selSlot = +d.slot; sfx('ui'); }
   else if (d.chest !== undefined) { const c = chest.data.slots[+d.chest]; if (c) { const left = invAdd(c.id, c.n, c.dur); if (left) c.n = left; else chest.data.slots[+d.chest] = null; sfx('pick'); } }
-  else if (d.cat) { craftCat = d.cat; $('pBody').scrollTop = 0; sfx('ui'); }
+  else if (d.cat) { craftCat = d.cat; craftSel = -1; $('pBody').scrollTop = 0; sfx('ui'); }
+  else if (d.rsel) { craftSel = +d.rsel; sfx('ui'); }
+  else if (d.qsel) { if (+d.qsel <= quest.i) { questSel = +d.qsel; sfx('ui'); } else { toast('🔒 앞의 목표를 먼저 달성하세요'); return; } }
+  else if (d.craftmax) { for (let k = 0; k < +d.craftmax; k++) craft(RECIPES[craftSel]); }
   else if (d.craft) craft(RECIPES[+d.craft]);
   else if (d.act) {
     const s = inv.slots[selSlot];
