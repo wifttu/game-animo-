@@ -1,7 +1,7 @@
 // 자원 노드: 나무 · 바위 · 채집물 (InstancedMesh 기반)
 import * as THREE from 'three';
 import { G, rng, rint, lerp, emit } from './util.js';
-import { NODE_GEO, DECOR_GEO, MAT } from './geo.js';
+import { NODE_GEO, DECOR_GEO, MAT, FOLIAGE } from './geo.js';
 import { heightAt, slopeAt, forestAt, SIZE } from './world.js';
 
 const flat = (x, z, max = .55) => slopeAt(x, z) < max;
@@ -43,7 +43,7 @@ export function createNodes() {
     ['fiber', -6, 8], ['fiber', 5, 12], ['fiber', -3, 5], ['berry', -8, 10], ['berry', 9, 12], ['flint', 2, 13], ['oak', -10, 4], ['oak', 11, 7], ['oak', 2, 16], ['rock', -9, 14]];
   const bushM = [];
   for (const t in NODE_TYPES) {
-    const T = NODE_TYPES[t], im = new THREE.InstancedMesh(NODE_GEO[t](), MAT, T.n);
+    const T = NODE_TYPES[t], im = new THREE.InstancedMesh(NODE_GEO[t](), ['oak', 'pine', 'berry', 'fiber', 'herb'].includes(t) ? FOLIAGE : MAT, T.n);
     im.castShadow = !!T.shadow; im.receiveShadow = true; im.frustumCulled = false;
     meshes[t] = im; G.scene.add(im);
     const st = starter.filter(s => s[0] === t);
@@ -62,7 +62,7 @@ export function createNodes() {
     }
     im.count = n;
   }
-  bushMesh = new THREE.InstancedMesh(DECOR_GEO.bush(), MAT, bushM.length);
+  bushMesh = new THREE.InstancedMesh(DECOR_GEO.bush(), FOLIAGE, bushM.length);
   bushM.forEach((n, i) => { d.position.set(n.x, n.y, n.z); d.rotation.set(0, n.rot, 0); d.scale.setScalar(n.s); d.updateMatrix(); bushMesh.setMatrixAt(i, d.matrix); });
   bushMesh.castShadow = bushMesh.receiveShadow = true; bushMesh.frustumCulled = false; G.scene.add(bushMesh);
 }
@@ -75,6 +75,18 @@ export function nodesNear(x, z, rad, out = []) {
     if (a) for (const n of a) if (!n.dead) out.push(n);
   }
   return out;
+}
+
+// 나무·바위 등 자원 노드와의 원형 충돌 (플레이어·동물 공용: o.x, o.z). 밀려났으면 true
+const pushBuf = [];
+export function nodePush(o, rad) {
+  let hit = false;
+  for (const n of nodesNear(o.x, o.z, 4, pushBuf)) {
+    const T = NODE_TYPES[n.t], R = T.r * (T.tool === 'pick' ? n.s : 1); if (!R) continue;
+    const ex = o.x - n.x, ez = o.z - n.z, d = Math.hypot(ex, ez), rr = R + rad;
+    if (d < rr) { hit = true; if (d > 1e-4) { o.x += ex / d * (rr - d); o.z += ez / d * (rr - d); } else o.x += rr; }
+  }
+  return hit;
 }
 
 // 반환: 획득한 드롭 목록 (없으면 null)

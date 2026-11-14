@@ -4,6 +4,7 @@ import { G, angLerp, emit, clamp } from './util.js';
 import { animalModel } from './geo.js';
 import { heightAt, slopeAt, HALF } from './world.js';
 import { structPush } from './structs.js';
+import { nodePush } from './nodes.js';
 
 export const ANIMALS = {
   rabbit: { name: '토끼', hp: 18, walk: 1.8, run: 6.3, flee: 8, cap: 5, xp: 8, drops: [['meat', 1, 1], ['hide', 0, 1]] },
@@ -22,7 +23,7 @@ export function spawnAnimal(kind, x, z, tamed) {
 }
 export function makePet(a) {
   a.tamed = true; G.pet = a;
-  const l = new THREE.PointLight('#fff0a0', 0, 18, 1.5); l.position.set(0, 1, 0); a.mesh.add(l); a.light = l;
+  const l = new THREE.PointLight('#fff0a0', 0, 18, 1.5); l.position.set(0, 1.7, 0); a.mesh.add(l); a.light = l;
   a.mesh.scale.setScalar(1.1);
 }
 export function removeAnimal(a) { G.scene.remove(a.mesh); const i = G.animals.indexOf(a); if (i >= 0) G.animals.splice(i, 1); }
@@ -78,7 +79,7 @@ export function updateAnimals(dt) {
         const d2 = Math.hypot(foe.x - a.x, foe.z - a.z); want = Math.atan2(foe.x - a.x, foe.z - a.z);
         if (d2 > 1.2) speed = S.run; else if (a.cd <= 0) { a.cd = .8; foe.tamed = false; damagePet(foe, a); }
       } else if (dist > 3.2) { want = toP; speed = dist > 8 ? S.run : 3.2; }
-      if (a.light) a.light.intensity = 3 + G.night * 14;
+      if (a.light) a.light.intensity = 1.5 + G.night * 7;
     } else if (S.hostile || (a.kind === 'boar' && a.angry > 0)) {
       const fire = a.kind === 'wolf' && fireNear(a.x, a.z, 9);
       if (a.kind === 'wolf' && G.night < .3) { want = away; speed = S.run; if (dist > 60) { removeAnimal(a); continue; } }
@@ -96,9 +97,12 @@ export function updateAnimals(dt) {
     if (speed > 0) {
       const nx = a.x + Math.sin(a.a) * speed * dt, nz = a.z + Math.cos(a.a) * speed * dt, h = heightAt(nx, nz);
       if (h > .5 && Math.hypot(nx, nz) < HALF * .9) { a.x = nx; a.z = nz; } else { a.a += Math.PI * .7; a.wa = a.a; }
-      structPush(a, .5);
       a.ph += dt * speed * 3.2;
     }
+    // 바위·나무·설치물을 통과하지 못하게 밀어낸다 (넉백·스폰 위치 포함). 막히면 옆으로 돌아간다
+    const cr = a.kind === 'rabbit' || a.kind === 'lumi' ? .3 : .5;
+    if (nodePush(a, cr) && speed > 0) { a.blk = (a.blk || 0) + dt; if (a.state === 'wander' && a.blk > .4) { a.wa = a.a + (Math.random() < .5 ? 1.4 : -1.4); a.blk = 0; } } else a.blk = 0;
+    structPush(a, cr);
     a.y = heightAt(a.x, a.z);
     // 애니메이션
     const hop = a.kind === 'rabbit' || a.kind === 'lumi';

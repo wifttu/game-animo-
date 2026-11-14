@@ -1,7 +1,7 @@
 // 지형 · 물 · 하늘 · 낮밤 조명
 import * as THREE from 'three';
-import { G, clamp, lerp, smooth, makeNoise, rng } from './util.js';
-import { DECOR_GEO, MAT } from './geo.js';
+import { G, clamp, lerp, smooth, makeNoise, rng, emit } from './util.js';
+import { DECOR_GEO, FOLIAGE, windU } from './geo.js';
 
 export const SIZE = 460, SEG = 230, HALF = SIZE / 2;
 const N = SEG + 1, H = new Float32Array(N * N);
@@ -68,7 +68,24 @@ export function createWorld() {
   mctx.putImageData(img, 0, 0);
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   geo.computeVertexNormals();
-  const terrain = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }));
+  // 지형 디테일 질감: 부드러운 얼룩 + 고운 입자 (타일링되도록 가장자리를 감싸 그린다)
+  const dc = document.createElement('canvas'); dc.width = dc.height = 256; const dx = dc.getContext('2d'), dr = rng(11);
+  dx.fillStyle = '#eeeeee'; dx.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 700; i++) {
+    const bx = dr() * 256, by = dr() * 256, br = 4 + dr() * 22, lite = dr() < .5;
+    for (const ox of [-256, 0, 256]) for (const oy of [-256, 0, 256]) {
+      const g = dx.createRadialGradient(bx + ox, by + oy, 0, bx + ox, by + oy, br);
+      g.addColorStop(0, lite ? 'rgba(255,255,255,.16)' : 'rgba(90,100,80,.16)'); g.addColorStop(1, 'rgba(128,128,128,0)');
+      dx.fillStyle = g; dx.fillRect(bx + ox - br, by + oy - br, br * 2, br * 2);
+    }
+  }
+  const di = dx.getImageData(0, 0, 256, 256);
+  for (let i = 0; i < di.data.length; i += 4) { const k = (dr() - .5) * 26; di.data[i] += k; di.data[i + 1] += k; di.data[i + 2] += k; }
+  dx.putImageData(di, 0, 0);
+  const detail = new THREE.CanvasTexture(dc); detail.wrapS = detail.wrapT = THREE.RepeatWrapping; detail.repeat.set(SIZE / 9, SIZE / 9);
+  detail.colorSpace = THREE.SRGBColorSpace; detail.anisotropy = 4;
+  for (let i = 0; i < col.length; i++) col[i] *= 1.16;
+  const terrain = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, map: detail }));
   terrain.receiveShadow = true; scene.add(terrain);
 
   // ── 물 (지형 높이맵으로 수심·물거품 표현)
@@ -111,9 +128,25 @@ export function createWorld() {
   // ── 하늘
   sky = new THREE.Mesh(new THREE.SphereGeometry(1400, 24, 12), new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
-    uniforms: { uTop: { value: new THREE.Color() }, uHor: { value: new THREE.Color() } },
+    uniforms: { uTop: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uSunDir: { value: new THREE.Vector3() }, uSunCol: { value: new THREE.Color() }, uT: { value: 0 }, uNight: { value: 0 } },
     vertexShader: `varying vec3 vP; void main(){ vP=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
-    fragmentShader: `uniform vec3 uTop,uHor; varying vec3 vP; void main(){ float h=normalize(vP).y; gl_FragColor=vec4(mix(uHor,uTop,pow(clamp(h*1.25+.02,0.,1.),.6)),1.);
+    fragmentShader: `uniform vec3 uTop,uHor,uSunDir,uSunCol; uniform float uT,uNight; varying vec3 vP;
+      float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+      float vn(vec2 p){ vec2 i=floor(p),f=fract(p); f=f*f*(3.-2.*f); return mix(mix(hash(i),hash(i+vec2(1.,0.)),f.x),mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),f.x),f.y); }
+      float fbm(vec2 p){ float a=.5,s=0.; for(int i=0;i<4;i++){ s+=vn(p)*a; p=p*2.03+vec2(17.,9.); a*=.5; } return s; }
+      void main(){
+        vec3 d=normalize(vP); float h=d.y;
+        vec3 col=mix(uHor,uTop,pow(clamp(h*1.25+.02,0.,1.),.6));
+        float sd=max(dot(d,uSunDir),0.), md=max(dot(d,-uSunDir),0.);
+        col+=uSunCol*(pow(sd,5.)*.14+pow(sd,40.)*.4)*(1.-uNight);   // 태양 후광
+        col+=vec3(.45,.55,1.)*pow(md,50.)*.22*uNight;                // 달무리
+        if(h>.015){                                                  // 높은 새털구름
+          vec2 uv=d.xz/(h+.14)*1.3+vec2(uT*.01,uT*.004);
+          float c=smoothstep(.45,.8,fbm(uv))*smoothstep(.015,.25,h);
+          vec3 cc=mix(uHor*1.1+uSunCol*.25*pow(sd,3.),vec3(1.-uNight*.82),.5)+uSunCol*.08*(1.-uNight);
+          col=mix(col,cc,c*(.7-uNight*.35));
+        }
+        gl_FragColor=vec4(col,1.);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
     }`,
@@ -134,7 +167,7 @@ export function createWorld() {
     const gr = x.createRadialGradient(64, 64, 0, 64, 64, 64); gr.addColorStop(0, inner); gr.addColorStop(.22, inner); gr.addColorStop(.3, outer); gr.addColorStop(1, 'rgba(255,255,255,0)');
     x.fillStyle = gr; x.fillRect(0, 0, 128, 128);
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), fog: false, depthWrite: false, transparent: true, blending: THREE.AdditiveBlending }));
-    s.scale.setScalar(330); s.renderOrder = -9; scene.add(s); return s;
+    s.material.color.setScalar(2.4); s.scale.setScalar(330); s.renderOrder = -9; scene.add(s); return s;
   };
   sunSprite = glow('rgba(255,250,225,1)', 'rgba(255,215,140,.38)');
   moonSprite = glow('rgba(225,235,255,1)', 'rgba(150,180,255,.22)'); moonSprite.scale.setScalar(200);
@@ -157,7 +190,7 @@ export function createWorld() {
   // ── 풀 · 꽃 · 덤불 (인스턴스)
   grassMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
   grassMat.onBeforeCompile = (s) => {
-    s.uniforms.uTime = grassMat.userData.t = { value: 0 };
+    s.uniforms.uTime = windU;
     s.vertexShader = 'uniform float uTime;\n' + s.vertexShader.replace('#include <begin_vertex>',
       `#include <begin_vertex>
        float ph=instanceMatrix[3].x*.35+instanceMatrix[3].z*.27;
@@ -181,7 +214,28 @@ export function createWorld() {
   scatter(DECOR_GEO.grass(), grassMat, G.settings.quality === 'low' ? 8000 : 24000, (x, z, h) => meadow(x, z, h) && noise(x * .05, z * .05) > -.2,
     (c, t, x, z) => c.set('#6fc24c').lerp(tmp.set('#a4dc62'), t).lerp(tmp.set('#4a9a48'), smooth(-.05, .3, forestAt(x, z)) * .6), .7, 1.5);
   const fcols = ['#ffffff', '#ffd9ec', '#fff1a8', '#c8d8ff', '#ffb3b3'];
-  scatter(DECOR_GEO.flower(), MAT, 1400, (x, z, h) => meadow(x, z, h) && noise2(x * .03, z * .03) > .12, (c, t) => c.set(fcols[(t * 5) | 0]), .9, 1.6);
+  scatter(DECOR_GEO.flower(), FOLIAGE, 1400, (x, z, h) => meadow(x, z, h) && noise2(x * .03, z * .03) > .12, (c, t) => c.set(fcols[(t * 5) | 0]), .9, 1.6);
+
+  // ── 반딧불이(밤) / 떠다니는 꽃가루(낮)
+  const fc = document.createElement('canvas'); fc.width = fc.height = 32; const fx2 = fc.getContext('2d'), fg = fx2.createRadialGradient(16, 16, 0, 16, 16, 16);
+  fg.addColorStop(0, 'rgba(255,255,255,1)'); fg.addColorStop(.3, 'rgba(255,255,255,.5)'); fg.addColorStop(1, 'rgba(255,255,255,0)'); fx2.fillStyle = fg; fx2.fillRect(0, 0, 32, 32);
+  for (let i = 0; i < FLY; i++) flyBase.push(r() * FBOX, .4 + r() * 3.2, r() * FBOX, r() * 6.28);
+  flies = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(FLY * 3), 3)),
+    new THREE.PointsMaterial({ size: .32, map: new THREE.CanvasTexture(fc), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  flies.frustumCulled = false; scene.add(flies);
+}
+const FLY = 110, FBOX = 64, flyBase = []; let flies;
+function updateFlies(focus) {
+  const p = flies.geometry.attributes.position, t = G.clock;
+  for (let i = 0; i < FLY; i++) {
+    const bx = flyBase[i * 4], bz = flyBase[i * 4 + 2], ph = flyBase[i * 4 + 3];
+    // 플레이어 주변 상자 안에서 월드에 고정된 채 반복 배치
+    const x = bx + Math.round((focus.x - bx) / FBOX) * FBOX + Math.sin(t * .5 + ph) * 1.5, z = bz + Math.round((focus.z - bz) / FBOX) * FBOX + Math.cos(t * .4 + ph * 1.7) * 1.5;
+    p.setXYZ(i, x, Math.max(heightAt(x, z), 0) + flyBase[i * 4 + 1] + Math.sin(t * .9 + ph * 2.3) * .5, z);
+  }
+  p.needsUpdate = true;
+  const n = G.night, m = flies.material;
+  m.color.setRGB(lerp(.55, 2.2, n), lerp(.55, 2.8, n), lerp(.45, .9, n)); m.size = lerp(.14, .34, n); m.opacity = lerp(.5, 1, n) * (.75 + Math.sin(t * 3) * .25);
 }
 
 // ── 낮밤 색상 키프레임: [시각, 하늘 위, 지평선, 태양색, 태양 세기, 환경광 세기]
@@ -217,16 +271,20 @@ export function updateWorld(dt, focus) {
   moonSprite.position.copy(cam).addScaledVector(dir, -1250); moonSprite.visible = dir.y < .12;
 
   const wu = water.material.uniforms;
+  const su = sky.material.uniforms; su.uSunDir.value.copy(dir); su.uSunCol.value.copy(cSun).multiplyScalar(sI * .45); su.uT.value = G.clock; su.uNight.value = G.night;
+  updateFlies(focus);
   wu.uT.value = G.clock; wu.uSky.value.copy(cHor).lerp(cTop, .5); wu.uSunDir.value.copy(ld); wu.uSunCol.value.copy(cSun).multiplyScalar(sI * .4); wu.uLight.value = lerp(.22, 1, 1 - G.night);
   water.position.x = cam.x; water.position.z = cam.z;
-  if (grassMat.userData.t) grassMat.userData.t.value = G.clock;
+  windU.value = G.clock;
   for (const c of clouds) { c.position.x += dt * 1.6; if (c.position.x > 480) c.position.x = -480; }
   clouds[0].material.color.copy(cHor).lerp(tmp.set('#ffffff'), .6 * (1 - G.night)).multiplyScalar(lerp(1, .35, G.night));
 }
 
 export function setQuality(q) {
   const low = q === 'low', r = G.renderer;
-  r.setPixelRatio(Math.min(window.devicePixelRatio, low ? 1.25 : 2));
+  // '높음'은 후처리(블룸) 비용이 있어 해상도 배율을 조금 낮춘다
+  r.setPixelRatio(Math.min(window.devicePixelRatio, low ? 1.25 : q === 'high' ? 1.75 : 2));
   sun.shadow.mapSize.setScalar(low ? 1024 : 2048);
   if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+  emit('quality', q);
 }

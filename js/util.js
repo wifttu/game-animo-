@@ -57,6 +57,7 @@ export const G = {
   structs: [], animals: [], pet: null,
   build: null,       // 건축 모드 상태
   target: null,
-  settings: { sound: true, quality: 'high' },
+  settings: { sound: true, music: true, quality: 'high', joyFixed: false, btnScale: 1, layout: { land: {}, port: {} } },
+  editing: false,
 };
 export const DAY_LEN = 540; // 하루 길이(초)

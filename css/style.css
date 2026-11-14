@@ -1,4 +1,4 @@
-:root{--glass:rgba(16,28,38,.66);--line:rgba(255,255,255,.14);--txt:#f4f8fa;--acc:#7de0c4;--acc2:#ffd166;
+:root{--bs:1;--glass:rgba(16,28,38,.66);--line:rgba(255,255,255,.14);--txt:#f4f8fa;--acc:#7de0c4;--acc2:#ffd166;
   --sl:env(safe-area-inset-left,0px);--sr:env(safe-area-inset-right,0px);--st:env(safe-area-inset-top,0px);--sb:env(safe-area-inset-bottom,0px);--u:clamp(9px,2.4vmin,14px)}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 html,body{margin:0;height:100%;overflow:hidden;background:#10202c;color:var(--txt);font:500 calc(var(--u)*1.15)/1.35 -apple-system,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",system-ui,sans-serif;overscroll-behavior:none;touch-action:none}
@@ -70,12 +70,13 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;touch-
 .slot kbd{position:absolute;left:4px;top:2px;font:600 calc(var(--u)*.7) system-ui;opacity:.45}
 
 /* 조작 */
-#joy{width:112px;height:112px;border-radius:50%;background:rgba(255,255,255,.1);border:2px solid rgba(255,255,255,.3);left:calc(var(--sl) + 9vmin);bottom:calc(var(--sb) + 9vmin);opacity:.5;transition:opacity .2s}
-#joy.on{opacity:.95;bottom:auto;transform:translate(-50%,-50%)}
-#joyk{position:absolute;left:31px;top:31px;width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,.75);box-shadow:0 3px 10px rgba(0,0,0,.3)}
+#joy{width:calc(112px*var(--bs));height:calc(112px*var(--bs));border-radius:50%;background:rgba(255,255,255,.1);border:2px solid rgba(255,255,255,.3);left:calc(var(--sl) + 9vmin + 56px);top:calc(100% - var(--sb) - 9vmin - 56px);translate:-50% -50%;opacity:.5;transition:opacity .2s}
+#joy.on{opacity:.95}
+#joyk{position:absolute;left:50%;top:50%;width:calc(46px*var(--bs));height:calc(46px*var(--bs));margin:calc(-23px*var(--bs)) 0 0 calc(-23px*var(--bs));border-radius:50%;background:rgba(255,255,255,.75);box-shadow:0 3px 10px rgba(0,0,0,.3)}
 @media (hover:hover) and (pointer:fine){#joy{display:none}}
 #btns{right:calc(var(--sr) + var(--u)*1.4);bottom:calc(var(--sb) + var(--u)*1.6);display:flex;align-items:flex-end;gap:calc(var(--u)*.9)}
 .round{border-radius:50%;background:var(--glass);border:2px solid rgba(255,255,255,.35);display:grid;place-items:center;align-content:center;line-height:1;transition:transform .08s}
+.round{--u:calc(clamp(9px,2.4vmin,14px)*var(--bs))}
 .round.big{width:calc(var(--u)*8.2);height:calc(var(--u)*8.2);font-size:calc(var(--u)*3.2);border-color:var(--acc);background:rgba(40,90,84,.6);box-shadow:0 0 22px rgba(125,224,196,.35)}
 .round.small{width:calc(var(--u)*5.2);height:calc(var(--u)*5.2);font-size:calc(var(--u)*2)}
 .round small{font-size:calc(var(--u)*.85);margin-top:3px;font-weight:700}
@@ -83,6 +84,18 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;touch-
 #buildbar button,.primary,.ghostbtn{white-space:nowrap;padding:calc(var(--u)*.75) calc(var(--u)*1.5);border-radius:99px;background:var(--glass);border:1px solid var(--line);font-weight:700;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 .primary{background:linear-gradient(180deg,#8cebd0,#4cc0a2)!important;color:#0d2b25!important;border:0!important;box-shadow:0 4px 14px rgba(76,192,162,.4)}
 button:disabled{opacity:.38;filter:grayscale(.7)}
+
+/* 버튼 배치 편집 */
+.custom{position:fixed!important;right:auto!important;bottom:auto!important;translate:-50% -50%;margin:0!important}
+#hotbar.custom{transform:none}
+#layoutBar{left:50%;top:calc(var(--st) + var(--u)*1.2);transform:translateX(-50%);display:flex;align-items:center;gap:calc(var(--u)*.7);background:rgba(16,28,38,.92);border:1px solid var(--acc2);border-radius:99px;padding:calc(var(--u)*.6) calc(var(--u)*.8) calc(var(--u)*.6) calc(var(--u)*1.4);pointer-events:auto;white-space:nowrap;z-index:5}
+#layoutBar button{padding:calc(var(--u)*.5) calc(var(--u)*1.2);border-radius:99px;background:rgba(255,255,255,.12);font-weight:700}
+#hud.editing{background:rgba(5,12,18,.45)}
+#hud.editing>#topleft,#hud.editing>#topright,#hud.editing>#stam,#hud.editing>#toasts,#hud.editing>#targetTag,#hud.editing>#buildbar{display:none!important}
+#hud.editing #joy,#hud.editing .round,#hud.editing #hotbar{display:grid!important;opacity:1;outline:2px dashed var(--acc2);outline-offset:5px;cursor:grab;pointer-events:auto;touch-action:none}
+#hud.editing #hotbar{display:flex!important}
+#hud.editing #joy{display:block!important}
+@media (orientation:portrait){#layoutBar{flex-wrap:wrap;justify-content:center;border-radius:calc(var(--u)*1.4);white-space:normal;width:86vw;text-align:center}}
 
 /* 패널 */
 #panel{position:fixed;inset:0;background:rgba(5,12,18,.5);display:grid;place-items:center;padding:calc(var(--st) + 8px) calc(var(--sr) + 8px) calc(var(--sb) + 8px) calc(var(--sl) + 8px);animation:fadein .18s}

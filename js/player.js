@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { G, clamp, lerp, angLerp } from './util.js';
 import { toolModel } from './geo.js';
 import { heightAt, HALF } from './world.js';
-import { nodesNear, NODE_TYPES } from './nodes.js';
+import { nodePush } from './nodes.js';
 import { structPush } from './structs.js';
 import { input } from './input.js';
 import { equipped, ITEMS } from './items.js';
@@ -42,7 +42,6 @@ function syncHeld(p) {
   if (id) { p.held = toolModel(s.tool.kind, s.tier); p.hand.add(p.held); }
 }
 
-const near = [];
 export function updatePlayer(dt) {
   const p = G.player, st = G.stats, cam = p.cam;
   syncHeld(p);
@@ -60,11 +59,7 @@ export function updatePlayer(dt) {
   if (p.speed > .3) p.rot = angLerp(p.rot, Math.atan2(p.vel.x, p.vel.y), Math.min(1, dt * 12));
   const o = { x: p.pos.x + p.vel.x * dt, z: p.pos.z + p.vel.y * dt };
   // 충돌: 자원 노드 · 설치물 · 맵 경계
-  for (const n of nodesNear(o.x, o.z, 4, near)) {
-    const R = NODE_TYPES[n.t].r * (NODE_TYPES[n.t].tool === 'pick' ? n.s : 1); if (!R) continue;
-    const ex = o.x - n.x, ez = o.z - n.z, d = Math.hypot(ex, ez), rr = R + .35;
-    if (d < rr && d > 1e-4) { o.x += ex / d * (rr - d); o.z += ez / d * (rr - d); }
-  }
+  nodePush(o, .35);
   structPush(o, .35);
   const dc = Math.hypot(o.x, o.z), lim = HALF * .93; if (dc > lim) { o.x *= lim / dc; o.z *= lim / dc; }
   p.pos.x = o.x; p.pos.z = o.z;
