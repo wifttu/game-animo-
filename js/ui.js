@@ -14,6 +14,7 @@ import { setMusic } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
 let panel = null, selSlot = 0, craftCat = 'tool', craftSel = -1, questSel = -1, chest = null;
+let moving = null, drag = null, dragDone = false; // 아이템 이동 상태: {c:'inv'|'chest', i}
 export const panelOpen = () => !!panel;
 
 export function toast(msg, cls = '') {
@@ -35,12 +36,12 @@ export function refreshHotbar() {
 // ── 패널
 export function openPanel(name, arg) {
   if (G.dead || !G.started || G.editing) return;
-  cancelBuild(); panel = name; chest = name === 'inv' && arg?.data ? arg : null;
+  cancelBuild(); moving = null; panel = name; chest = name === 'inv' && arg?.data ? arg : null;
   if (name === 'craft' && typeof arg === 'string') { craftCat = arg; craftSel = -1; }
   if (name === 'quest') questSel = -1;
   $('panel').classList.remove('hidden'); G.paused = true; sfx('ui'); renderPanel();
 }
-export function closePanel() { if (!panel) return; panel = null; chest = null; $('panel').classList.add('hidden'); G.paused = false; save(); }
+export function closePanel() { if (!panel) return; panel = null; chest = null; moving = null; $('panel').classList.add('hidden'); G.paused = false; save(); }
 
 function renderPanel() {
   const T = $('pTitle'), tabs = $('pTabs'), B = $('pBody'); tabs.innerHTML = '';
@@ -53,6 +54,7 @@ function renderPanel() {
       if (it.food) acts += `<button class="primary" data-act="use">${it.id === 'bandage' ? '사용' : '먹기'}</button>`;
       if (it.place) acts += `<button class="primary" data-act="use">설치</button>`;
       if (it.armor) acts += `<button class="primary" data-act="use">착용</button>`;
+      acts += `<button class="ghostbtn" data-act="move">${moving ? '이동 취소' : '옮기기'}</button>`;
       if (selSlot >= HOTBAR) acts += `<button class="ghostbtn" data-act="hot">단축 슬롯으로</button>`;
       if (chest) acts += `<button class="ghostbtn" data-act="store">상자에 넣기</button>`;
       acts += `<button class="ghostbtn" data-act="drop">버리기</button>`;
@@ -60,9 +62,10 @@ function renderPanel() {
     const st = it?.tool ? `<div class="chips">${it.tool.power ? `<span class="chip">채집력 ${it.tool.power}</span>` : ''}<span class="chip">공격력 ${it.tool.dmg}</span>${it.tool.dur ? `<span class="chip">내구도 ${s.dur}/${it.tool.dur}</span>` : ''}</div>` : '';
     const fd = it?.food ? `<div class="chips">${it.food.hunger ? `<span class="chip">🍖 +${it.food.hunger}</span>` : ''}${it.food.thirst ? `<span class="chip">💧 +${it.food.thirst}</span>` : ''}${it.food.hp ? `<span class="chip ${it.food.hp < 0 ? 'no' : ''}">❤️ ${it.food.hp > 0 ? '+' : ''}${it.food.hp}</span>` : ''}</div>` : '';
     B.innerHTML = `<div class="invwrap"><div>
-      ${chest ? `<p class="gridcap">📦 상자 (눌러서 꺼내기)</p><div class="grid" style="margin-bottom:10px">${chest.data.slots.map((c, i) => slotHTML(c, i, '', 'data-chest')).join('')}</div><p class="gridcap">🎒 가방</p>` : ''}
-      <div class="grid">${inv.slots.map((c, i) => slotHTML(c, i, (i === selSlot ? 'sel ' : '') + (i < HOTBAR ? 'hb' : ''))).join('')}</div>
-      <p class="gridcap" style="margin-top:8px">윗줄 6칸이 단축 슬롯입니다 · 착용 중: ${G.armor ? `${ITEMS[G.armor].icon} ${ITEMS[G.armor].name} <button class="chip" data-act="unarmor">벗기</button>` : '없음'}</p></div>
+      ${chest ? `<p class="gridcap">📦 상자 (눌러서 꺼내기)</p><div class="grid" style="margin-bottom:10px">${chest.data.slots.map((c, i) => slotHTML(c, i, moving?.c === 'chest' && moving.i === i ? 'mv' : '', 'data-chest')).join('')}</div><p class="gridcap">🎒 가방</p>` : ''}
+      <div class="grid">${inv.slots.map((c, i) => slotHTML(c, i, (i === selSlot ? 'sel ' : '') + (i < HOTBAR ? 'hb ' : '') + (moving?.c === 'inv' && moving.i === i ? 'mv' : ''))).join('')}</div>
+      <p class="gridcap ${moving ? 'movehint' : ''}" style="margin-top:8px">${moving ? '👉 옮길 칸을 누르세요 (같은 칸을 누르면 취소)' : '끌어서 옮기거나, 선택한 아이템을 한 번 더 누른 뒤 옮길 칸을 누르세요'} <button class="chip" data-act="sort">🧹 자동 정리</button></p>
+      <p class="gridcap">윗줄 6칸이 단축 슬롯입니다 · 착용 중: ${G.armor ? `${ITEMS[G.armor].icon} ${ITEMS[G.armor].name} <button class="chip" data-act="unarmor">벗기</button>` : '없음'}</p></div>
       <div class="detail">${it ? `<div class="big">${it.icon}</div><h3>${it.name}${s.n > 1 ? ` ×${s.n}` : ''}</h3><p>${it.desc}</p>${st}${fd}<div class="acts">${acts}</div>` : '<p>아이템을 선택하세요.</p>'}</div></div>`;
   } else if (panel === 'craft') {
     // 레시피 격자에서 고르면 오른쪽에 '재료 칸 → 결과 칸'이 나타나는 방식
@@ -110,11 +113,64 @@ function renderPanel() {
   B.scrollTop = keep;
 }
 
+const slotsOf = (c) => c === 'chest' ? chest.data.slots : inv.slots;
+// 칸 사이 이동: 같은 아이템이면 합치고, 아니면 자리를 맞바꾼다
+function moveItem(from, to) {
+  const A = slotsOf(from.c), D = slotsOf(to.c), a = A[from.i], b = D[to.i];
+  if (!a || (A === D && from.i === to.i)) return;
+  if (b && b.id === a.id && ITEMS[a.id].stack > 1) { const k = Math.min(a.n, ITEMS[a.id].stack - b.n); b.n += k; a.n -= k; if (a.n <= 0) A[from.i] = null; }
+  else { A[from.i] = b; D[to.i] = a; }
+  if (to.c === 'inv') selSlot = to.i;
+  sfx('pick');
+}
+// 단축 슬롯(윗줄)은 그대로 두고 나머지를 종류별로 모아 정렬
+function sortInv() {
+  const rank = (it) => it.tool ? 0 : it.armor ? 1 : it.place ? 2 : it.food ? 3 : 4, rest = [];
+  for (let i = HOTBAR; i < inv.slots.length; i++) { const s = inv.slots[i]; inv.slots[i] = null; if (!s) continue;
+    const same = ITEMS[s.id].stack > 1 && rest.find(r => r.id === s.id && r.n < ITEMS[s.id].stack);
+    if (same) { const k = Math.min(s.n, ITEMS[s.id].stack - same.n); same.n += k; s.n -= k; }
+    if (s.n > 0) rest.push(s); }
+  rest.sort((a, b) => rank(ITEMS[a.id]) - rank(ITEMS[b.id]) || a.id.localeCompare(b.id) || b.n - a.n);
+  rest.forEach((s, i) => { inv.slots[HOTBAR + i] = s; });
+  selSlot = Math.min(selSlot, inv.slots.length - 1); sfx('pick'); toast('🧹 가방을 정리했습니다');
+}
+// 끌어서 놓기
+function initDrag() {
+  const B = $('pBody'), ref = (el) => el.dataset.chest !== undefined ? { c: 'chest', i: +el.dataset.chest } : { c: 'inv', i: +el.dataset.slot };
+  B.addEventListener('pointerdown', (e) => {
+    const t = panel === 'inv' && e.target.closest('.grid .slot'); if (!t) return;
+    const src = ref(t), s = slotsOf(src.c)[src.i]; if (!s) return;
+    drag = { src, x: e.clientX, y: e.clientY, id: e.pointerId, icon: ITEMS[s.id].icon, ghost: null };
+  });
+  B.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    if (!drag.ghost) {
+      if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 12) return;
+      drag.ghost = document.createElement('div'); drag.ghost.className = 'dragGhost'; drag.ghost.textContent = drag.icon; document.body.appendChild(drag.ghost);
+    }
+    drag.ghost.style.left = e.clientX + 'px'; drag.ghost.style.top = e.clientY + 'px';
+  });
+  const end = (e) => {
+    const d = drag; drag = null; if (!d || !d.ghost) return;
+    d.ghost.remove(); dragDone = true; setTimeout(() => { dragDone = false; }, 80);
+    const el = e.type === 'pointerup' && document.elementFromPoint(e.clientX, e.clientY)?.closest('.grid .slot');
+    if (el) { moveItem(d.src, ref(el)); moving = null; refreshHotbar(); }
+  };
+  B.addEventListener('pointerup', end); B.addEventListener('pointercancel', end);
+}
+
 let resetArmed = 0;
 function panelClick(e) {
   const t = e.target.closest('[data-slot],[data-chest],[data-act],[data-cat],[data-craft],[data-craftmax],[data-rsel],[data-qsel],[data-set]'); if (!t) return;
   const d = t.dataset;
-  if (d.slot !== undefined) { selSlot = +d.slot; sfx('ui'); }
+  if (dragDone) return;
+  if (d.slot !== undefined) {
+    const i = +d.slot;
+    if (moving) { moveItem(moving, { c: 'inv', i }); moving = null; }
+    else if (i === selSlot && inv.slots[i]) { moving = { c: 'inv', i }; sfx('ui'); }
+    else { selSlot = i; sfx('ui'); }
+  }
+  else if (d.chest !== undefined && moving) { moveItem(moving, { c: 'chest', i: +d.chest }); moving = null; }
   else if (d.chest !== undefined) { const c = chest.data.slots[+d.chest]; if (c) { const left = invAdd(c.id, c.n, c.dur); if (left) c.n = left; else chest.data.slots[+d.chest] = null; sfx('pick'); } }
   else if (d.cat) { craftCat = d.cat; craftSel = -1; $('pBody').scrollTop = 0; sfx('ui'); }
   else if (d.rsel) { craftSel = +d.rsel; sfx('ui'); }
@@ -124,6 +180,8 @@ function panelClick(e) {
   else if (d.act) {
     const s = inv.slots[selSlot];
     if (d.act === 'unarmor') unequipArmor();
+    else if (d.act === 'sort') { sortInv(); moving = null; }
+    else if (d.act === 'move') { moving = moving ? null : s ? { c: 'inv', i: selSlot } : null; sfx('ui'); }
     else if (!s) return;
     else if (d.act === 'use') useSlot(selSlot);
     else if (d.act === 'drop') { inv.slots[selSlot] = null; sfx('ui'); }
@@ -148,6 +206,7 @@ function panelClick(e) {
 export function showDeath(msg) { $('deathMsg').textContent = msg + ` (${G.day}일차)`; $('death').classList.remove('hidden'); }
 
 export function initUI() {
+  initDrag();
   $('pBody').addEventListener('click', panelClick); $('pTabs').addEventListener('click', panelClick);
   $('pClose').addEventListener('click', closePanel);
   $('panel').addEventListener('pointerdown', (e) => { if (e.target.id === 'panel') closePanel(); });
