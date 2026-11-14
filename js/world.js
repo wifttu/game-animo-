@@ -27,14 +27,37 @@ export function heightAt(x, z) {
 export function slopeAt(x, z) {
   const e = 1.5; return Math.hypot(heightAt(x + e, z) - heightAt(x - e, z), heightAt(x, z + e) - heightAt(x, z - e)) / (2 * e);
 }
+// 기후 지역: [설원 정도, 사막 정도] (0..1). 북쪽(-z)은 설원, 서쪽(-x)은 사막
+export function biomeAt(x, z) {
+  const n = noise2(x * .01 + 40, z * .01 - 7) * 26, snow = smooth(-58, -98, z + n);
+  return [snow, smooth(-70, -110, x + n * .8) * (1 - snow)];
+}
+export const OUTPOSTS = []; // 마을 위치: { kind, x, y, z, rot }
+function findOutposts() {
+  // 중심에서 바깥으로 훑으며 '평평하고 물가에 가까운 땅'을 찾는다
+  const ray = (a, ok, minD = 45) => { let best = null;
+    for (let d = minD; d < 215; d += 2) { const x = Math.sin(a) * d, z = Math.cos(a) * d, h = heightAt(x, z);
+      if (h < .2) { if (best) break; continue; }
+      if (h > 1.7 && h < 7 && slopeAt(x, z) < .22 && ok(x, z)) { best = { x, z, y: h, rot: a }; if (!ok.shore) break; } }
+    return best; };
+  const pick = (kind, angles, ok, minD) => { for (const a of angles) { const o = ray(a, ok, minD); if (o && !OUTPOSTS.some(q => Math.hypot(q.x - o.x, q.z - o.z) < 70)) { OUTPOSTS.push({ kind, ...o }); return; } } };
+  const grass = (x, z) => { const b = biomeAt(x, z); return b[0] < .2 && b[1] < .2; }, shore = (x, z) => grass(x, z); shore.shore = 1;
+  const sweep = (c) => [0, .25, -.25, .5, -.5, .8, -.8, 1.1, -1.1].map(d => c + d);
+  pick('fish', sweep(1.2), shore, 45);
+  pick('farm', sweep(0), grass, 70);
+  pick('lodge', sweep(Math.PI), (x, z) => biomeAt(x, z)[0] > .7, 80);
+  pick('bazaar', sweep(-Math.PI / 2), (x, z) => biomeAt(x, z)[1] > .7, 90);
+}
 export const forestAt = (x, z) => noise2(x * .012, z * .012) + noise2(x * .04, z * .04) * .3;
 
 const cSand = new THREE.Color('#d8c48c'), cGrassA = new THREE.Color('#8fd058'), cGrassB = new THREE.Color('#5fae48'), cForest = new THREE.Color('#4a9a48'),
+  cDesert = new THREE.Color('#dfbd78'), cSnowG = new THREE.Color('#edf3f7'),
   cRock = new THREE.Color('#8d8f8c'), cRock2 = new THREE.Color('#a9a79f'), cSnow = new THREE.Color('#f6fafc'), cSea = new THREE.Color('#bfae7c'), tmp = new THREE.Color();
 function terrainColor(x, z, h, sl, out) {
   const g = noise(x * .035, z * .035) * .5 + .5, f = smooth(-.05, .3, forestAt(x, z));
   out.copy(cGrassA).lerp(cGrassB, g).lerp(cForest, f * .7);
-  out.lerp(cSand, smooth(1.9, .8, h + g * .5));
+  const bm = biomeAt(x, z); out.lerp(cDesert, bm[1] * (.82 + g * .18)).lerp(cSnowG, bm[0] * (.86 + g * .14));
+  out.lerp(cSand, smooth(1.9, .8, h + g * .5) * (1 - bm[0] * .7));
   if (h < 0) out.lerp(cSea, smooth(0, -3, h));
   tmp.copy(cRock).lerp(cRock2, g);
   out.lerp(tmp, Math.max(smooth(.62, .95, sl), smooth(22, 28, h + g * 3)));
@@ -51,6 +74,7 @@ export function createWorld() {
   const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG); geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   for (let i = 0; i < pos.count; i++) { H[i] = rawHeight(pos.getX(i), pos.getZ(i)); pos.setY(i, H[i]); }
+  findOutposts();
   const col = new Float32Array(pos.count * 3), c = new THREE.Color();
   mapCanvas = document.createElement('canvas'); mapCanvas.width = mapCanvas.height = N;
   const mctx = mapCanvas.getContext('2d'), img = mctx.createImageData(N, N);
@@ -210,7 +234,7 @@ export function createWorld() {
     }
     im.count = n; im.castShadow = !!shadow; im.receiveShadow = true; im.frustumCulled = false; scene.add(im); return im;
   };
-  const meadow = (x, z, h) => h > 1.6 && h < 21 && slopeAt(x, z) < .6;
+  const meadow = (x, z, h) => { if (!(h > 1.6 && h < 21 && slopeAt(x, z) < .6)) return false; const b = biomeAt(x, z); return b[0] + b[1] < .35 && !OUTPOSTS.some(o => Math.hypot(o.x - x, o.z - z) < 7); };
   scatter(DECOR_GEO.grass(), grassMat, G.settings.quality === 'low' ? 8000 : 24000, (x, z, h) => meadow(x, z, h) && noise(x * .05, z * .05) > -.2,
     (c, t, x, z) => c.set('#6fc24c').lerp(tmp.set('#a4dc62'), t).lerp(tmp.set('#4a9a48'), smooth(-.05, .3, forestAt(x, z)) * .6), .7, 1.5);
   const fcols = ['#ffffff', '#ffd9ec', '#fff1a8', '#c8d8ff', '#ffb3b3'];
@@ -226,15 +250,16 @@ export function createWorld() {
 }
 const FLY = 110, FBOX = 64, flyBase = []; let flies;
 function updateFlies(focus) {
-  const p = flies.geometry.attributes.position, t = G.clock;
+  const p = flies.geometry.attributes.position, t = G.clock, snowing = biomeAt(focus.x, focus.z)[0] > .5; // 설원에서는 눈송이로 바뀐다
   for (let i = 0; i < FLY; i++) {
     const bx = flyBase[i * 4], bz = flyBase[i * 4 + 2], ph = flyBase[i * 4 + 3];
     // 플레이어 주변 상자 안에서 월드에 고정된 채 반복 배치
     const x = bx + Math.round((focus.x - bx) / FBOX) * FBOX + Math.sin(t * .5 + ph) * 1.5, z = bz + Math.round((focus.z - bz) / FBOX) * FBOX + Math.cos(t * .4 + ph * 1.7) * 1.5;
-    p.setXYZ(i, x, Math.max(heightAt(x, z), 0) + flyBase[i * 4 + 1] + Math.sin(t * .9 + ph * 2.3) * .5, z);
+    p.setXYZ(i, x, Math.max(heightAt(x, z), 0) + (snowing ? 5.5 - ((t * 1.4 + ph * 3) % 5.5) : flyBase[i * 4 + 1] + Math.sin(t * .9 + ph * 2.3) * .5), z);
   }
   p.needsUpdate = true;
   const n = G.night, m = flies.material;
+  if (snowing) { m.color.setRGB(1.1, 1.15, 1.25); m.size = .22; m.opacity = .9; return; }
   m.color.setRGB(lerp(.55, 2.2, n), lerp(.55, 2.8, n), lerp(.45, .9, n)); m.size = lerp(.14, .34, n); m.opacity = lerp(.5, 1, n) * (.75 + Math.sin(t * 3) * .25);
 }
 

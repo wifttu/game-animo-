@@ -2,24 +2,27 @@
 import * as THREE from 'three';
 import { G, rng, rint, lerp, emit } from './util.js';
 import { NODE_GEO, DECOR_GEO, MAT, FOLIAGE } from './geo.js';
-import { heightAt, slopeAt, forestAt, SIZE } from './world.js';
+import { heightAt, slopeAt, forestAt, SIZE, biomeAt, OUTPOSTS } from './world.js';
 
 const flat = (x, z, max = .55) => slopeAt(x, z) < max;
+const green = (x, z) => { const b = biomeAt(x, z); return b[0] < .3 && b[1] < .3; }; // 초원 지역인지
 // drops: [아이템, 최소, 최대]
 export const NODE_TYPES = {
   oak: { n: 250, r: .5, hp: 30, tool: 'axe', drops: [['wood', 3, 5], ['sap', 0, 1]], respawn: 300, label: '참나무', xp: 5, s: [.85, 1.35], shadow: 1,
-    rule: (x, z, h) => h > 1.8 && h < 17 && flat(x, z) && forestAt(x, z) > -.12 },
+    rule: (x, z, h) => h > 1.8 && h < 17 && flat(x, z) && forestAt(x, z) > -.12 && green(x, z) },
   pine: { n: 210, r: .45, hp: 26, tool: 'axe', drops: [['wood', 2, 4], ['sap', 0, 2]], respawn: 300, label: '소나무', xp: 5, s: [.9, 1.5], shadow: 1,
-    rule: (x, z, h) => h > 9 && h < 30 && flat(x, z, .8) && forestAt(x, z) > -.25 },
+    rule: (x, z, h) => biomeAt(x, z)[0] > .5 ? h > 1.8 && h < 30 && flat(x, z, .8) && forestAt(x, z) > -.45 : h > 9 && h < 30 && flat(x, z, .8) && forestAt(x, z) > -.25 && biomeAt(x, z)[1] < .3 },
   rock: { n: 150, r: 1.1, hp: 30, tool: 'pick', req: 1, drops: [['stone', 3, 5], ['flint', 0, 1, .5]], respawn: 360, label: '바위', xp: 6, s: [.7, 1.4], shadow: 1,
     rule: (x, z, h) => h > 1.2 && flat(x, z, .9) },
   ore: { n: 60, r: 1.0, hp: 55, tool: 'pick', req: 2, drops: [['ore', 2, 3], ['stone', 1, 2]], respawn: 480, label: '철광석', xp: 10, s: [.8, 1.2], shadow: 1,
     rule: (x, z, h) => h > 12 && flat(x, z, 1) },
   berry: { n: 90, r: .8, pick: 1, drops: [['berry', 2, 4]], respawn: 200, label: '열매 덤불', xp: 2, s: [1, 1.3], bush: 1,
-    rule: (x, z, h) => h > 2 && h < 16 && flat(x, z) },
-  fiber: { n: 170, r: 0, pick: 1, drops: [['fiber', 1, 2], ['seed', 1, 1, .3], ['seed_potato', 1, 1, .14], ['seed_pumpkin', 1, 1, .08]], respawn: 150, label: '억새풀', xp: 1, s: [1, 1.5], rule: (x, z, h) => h > 1.6 && h < 16 && flat(x, z) },
-  mushroom: { n: 80, r: 0, pick: 1, drops: [['mushroom', 1, 2]], respawn: 240, label: '버섯', xp: 2, s: [1, 1.5], rule: (x, z, h) => h > 2 && h < 22 && forestAt(x, z) > .05 },
-  herb: { n: 60, r: 0, pick: 1, drops: [['herb', 1, 1]], respawn: 260, label: '약초', xp: 2, s: [1, 1.4], rule: (x, z, h) => h > 2 && h < 24 && flat(x, z) },
+    rule: (x, z, h) => h > 2 && h < 16 && flat(x, z) && green(x, z) },
+  cactus: { n: 70, r: .4, pick: 1, drops: [['cactus_fruit', 1, 2], ['fiber', 1, 1, .5]], respawn: 260, label: '선인장', xp: 2, s: [.8, 1.4], shadow: 1,
+    rule: (x, z, h) => h > 1.6 && h < 20 && flat(x, z) && biomeAt(x, z)[1] > .6 },
+  fiber: { n: 170, r: 0, pick: 1, drops: [['fiber', 1, 2], ['seed', 1, 1, .3], ['seed_potato', 1, 1, .14], ['seed_pumpkin', 1, 1, .08]], respawn: 150, label: '억새풀', xp: 1, s: [1, 1.5], rule: (x, z, h) => h > 1.6 && h < 16 && flat(x, z) && biomeAt(x, z)[0] < .3 },
+  mushroom: { n: 80, r: 0, pick: 1, drops: [['mushroom', 1, 2]], respawn: 240, label: '버섯', xp: 2, s: [1, 1.5], rule: (x, z, h) => h > 2 && h < 22 && forestAt(x, z) > .05 && biomeAt(x, z)[1] < .3 },
+  herb: { n: 60, r: 0, pick: 1, drops: [['herb', 1, 1]], respawn: 260, label: '약초', xp: 2, s: [1, 1.4], rule: (x, z, h) => h > 2 && h < 24 && flat(x, z) && biomeAt(x, z)[1] < .3 },
 };
 
 export const nodes = [];
@@ -39,7 +42,7 @@ export function createNodes() {
   const starter = [['fiber', -6, 8], ['fiber', 5, 12], ['fiber', -3, 5], ['berry', -8, 10], ['berry', 9, 12], ['oak', -10, 4], ['oak', 11, 7], ['oak', 2, 16], ['oak', -5, 13], ['rock', -9, 14], ['rock', 12, 13]];
   const bushM = [];
   for (const t in NODE_TYPES) {
-    const T = NODE_TYPES[t], im = new THREE.InstancedMesh(NODE_GEO[t](), ['oak', 'pine', 'berry', 'fiber', 'herb'].includes(t) ? FOLIAGE : MAT, T.n);
+    const T = NODE_TYPES[t], im = new THREE.InstancedMesh(NODE_GEO[t](), ['oak', 'pine', 'berry', 'fiber', 'herb', 'cactus'].includes(t) ? FOLIAGE : MAT, T.n);
     im.castShadow = !!T.shadow; im.receiveShadow = true; im.frustumCulled = false;
     meshes[t] = im; G.scene.add(im);
     const st = starter.filter(s => s[0] === t);
@@ -48,7 +51,7 @@ export function createNodes() {
       let x, z; const s0 = st[n];
       if (s0) { x = s0[1]; z = s0[2]; } else { x = (r() - .5) * SIZE * .9; z = (r() - .5) * SIZE * .9; }
       const h = heightAt(x, z);
-      if (!s0 && (!T.rule(x, z, h) || (T.r > 0 && Math.hypot(x, z - 4) < 7))) continue;
+      if (!s0 && (!T.rule(x, z, h) || (T.r > 0 && Math.hypot(x, z - 4) < 7) || OUTPOSTS.some(o => Math.hypot(o.x - x, o.z - z) < 11))) continue;
       const node = { id: nodes.length, t, i: n, x, y: h - (T.r > 0 ? .08 : 0), z, rot: r() * 6.28, s: lerp(T.s[0], T.s[1], r()), hp: T.hp || 1, dead: false, respawn: 0 };
       nodes.push(node); setM(node);
       const k = .88 + r() * .24; im.setColorAt(n, col.setRGB(k, k * (.96 + r() * .08), k));

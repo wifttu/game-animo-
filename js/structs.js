@@ -86,6 +86,7 @@ export function updateStructs(dt) {
 
 // 원/선분 충돌로 밀어내기 (플레이어·동물 공용: obj.x, obj.z)
 export function structPush(o, rad) {
+  for (const t of G.statics) { const dx = o.x - t.x, dz = o.z - t.z, d = Math.hypot(dx, dz), R = t.r + rad; if (d < R && d > 1e-4) { o.x += dx / d * (R - d); o.z += dz / d * (R - d); } }
   for (const s of G.structs) {
     const S = s.S;
     if (S.seg) {

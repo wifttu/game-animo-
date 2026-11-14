@@ -34,7 +34,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;touch-
 /* 우상단 */
 #topright{right:calc(var(--sr) + var(--u));top:calc(var(--st) + var(--u));display:flex;flex-direction:column;align-items:flex-end;gap:calc(var(--u)*.6)}
 #clock{display:flex;gap:calc(var(--u)*.6);align-items:center;background:var(--glass);border:1px solid var(--line);border-radius:99px;padding:calc(var(--u)*.4) calc(var(--u)*1.1)}
-#clock b{font-weight:700}#clockTime{opacity:.8;font-variant-numeric:tabular-nums}
+#clock b{font-weight:700}#coins{font-weight:800;color:var(--acc2);border-left:1px solid var(--line);padding-left:calc(var(--u)*.6)}#clockTime{opacity:.8;font-variant-numeric:tabular-nums}
 #mapWrap{width:calc(var(--u)*9.5);height:calc(var(--u)*9.5);border-radius:50%;overflow:hidden;border:2px solid rgba(255,255,255,.5);box-shadow:0 4px 18px rgba(0,0,0,.35)}
 #minimap{width:100%;height:100%;display:block}
 #menuBtns{display:flex;gap:calc(var(--u)*.5)}
@@ -157,6 +157,9 @@ button:disabled{opacity:.38;filter:grayscale(.7)}
 .cdetail .acts{display:flex;gap:calc(var(--u)*.6);margin-top:auto}
 .cdetail .acts button{flex:1;font-size:calc(var(--u)*1.25);padding:calc(var(--u)*.8)}
 .cdetail .acts .ghostbtn{flex:.7}
+.price{font-size:calc(var(--u)*1.5);font-weight:800;color:var(--acc2)}
+.slot.rc i.pr{position:absolute;left:0;right:0;bottom:2px;height:auto;background:none;border-radius:0;overflow:visible;font-size:calc(var(--u)*.82);font-weight:800;font-style:normal;line-height:1;color:var(--acc2);text-align:center;text-shadow:0 1px 3px #000}
+.slot.rc:has(i.pr){padding-bottom:calc(var(--u)*.9)}.slot.rc:has(i.pr) b{top:2px;bottom:auto}
 .qcard{background:linear-gradient(135deg,rgba(255,209,102,.2),rgba(255,209,102,.05));border:1px solid var(--acc2);border-radius:calc(var(--u)*1.2);padding:calc(var(--u)*1.1) calc(var(--u)*1.3);margin-bottom:calc(var(--u)*1)}
 .qcard.done{background:rgba(125,224,196,.1);border-color:rgba(125,224,196,.6)}
 .qcard small{color:var(--acc2);font-weight:700;letter-spacing:.04em}.qcard.done small{color:#9dffc6}

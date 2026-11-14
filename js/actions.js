@@ -5,7 +5,7 @@ import { nodesNear, hitNode, NODE_TYPES } from './nodes.js';
 import { damageAnimal, makePet } from './animals.js';
 import { addStruct, removeStruct, startBuild, cancelBuild, stationNear, STRUCTS, plantCrop, toggleDoor } from './structs.js';
 import { fishAction, fishHint } from './fishing.js';
-import { heightAt } from './world.js';
+import { heightAt, biomeAt, OUTPOSTS } from './world.js';
 import { toast, refreshHotbar, openPanel, closePanel, showDeath } from './ui.js';
 import { burst, floatText } from './fx.js';
 import { sfx } from './audio.js';
@@ -60,6 +60,7 @@ export function findTarget() {
   };
   for (const n of nodesNear(px, pz, 6, near)) consider('node', n, n.x, n.z, NODE_TYPES[n.t].r * .8, 0, 2.3);
   for (const a of G.animals) if (!a.dying && !a.tamed) consider('animal', a, a.x, a.z, .5, -.8);
+  for (const o of OUTPOSTS) consider('npc', o, o.nx, o.nz, .4, -1.2, 3.1);
   for (const s of G.structs) consider('struct', s, s.x, s.z, s.S.r || .6, s.S.act ? -.3 : .8, 2.2);
   return best;
 }
@@ -71,6 +72,7 @@ export function actionHint() {
   if (G.fish || !t) { const fh = fishHint(); if (fh) return fh; }
   if (t?.kind === 'node') { const T = NODE_TYPES[t.o.t]; return T.pick ? ['✋', '줍기'] : T.tool === 'axe' ? ['🪓', '벌목'] : ['⛏️', '채광']; }
   if (t?.kind === 'animal') return t.o.kind === 'lumi' && invCount('berry') ? ['🫐', '먹이 주기'] : ['⚔️', '공격'];
+  if (t?.kind === 'npc') return ['🪙', '거래'];
   if (t?.kind === 'struct' && t.o.S.act) return ['🤚', t.o.S.act];
   if (nearWater()) return ['💧', '마시기'];
   if (eq?.food) return [eq.icon, eq.id === 'bandage' ? '사용' : '먹기'];
@@ -98,6 +100,7 @@ export function doAction() {
     p.swing = .38; sfx('swing'); return;
   }
   p.swing = .38;
+  if (t.kind === 'npc') return openPanel('trade', t.o);
   if (t.kind === 'node') {
     const n = t.o, T = NODE_TYPES[n.t];
     if (T.pick) { const dr = hitNode(n, 99); sfx('pick'); for (const [id, k] of dr) gain(id, k); addXp(T.xp); return; }
@@ -188,6 +191,18 @@ export function useSlot(i) {
 }
 export function unequipArmor() { if (G.armor && invAdd(G.armor, 1) === 0) { G.armor = null; refreshHotbar(); } }
 
+// ── 거래
+export function sellItem(shop, id, n) {
+  n = Math.min(n, invCount(id)); const price = shop.buys[id]; if (!n || !price) return;
+  invRemove(id, n); G.stats.coins += price * n; sfx('pick'); toast(`🪙 +${price * n} (${ITEMS[id].name} ×${n})`); emit('sell', id); refreshHotbar();
+}
+export function buyItem(shop, id) {
+  const price = shop.sells[id]; if (!price) return;
+  if (G.stats.coins < price) return warn('🪙 코인이 부족합니다');
+  if (invAdd(id, 1) > 0) return warn('가방이 가득 찼어요!');
+  G.stats.coins -= price; sfx('craft'); toast(`${ITEMS[id].icon} ${ITEMS[id].name} 구매 (🪙 -${price})`); emit('buy', id); refreshHotbar();
+}
+
 export function craft(r) {
   if (r.station && !stationNear(r.station)) return warn('근처에 필요한 시설이 없습니다');
   if (!canCraft(r)) return;
@@ -202,11 +217,13 @@ export function updateStats(dt) {
   const st = G.stats, p = G.player; if (G.dead) return;
   const moving = p.speed > .5;
   st.hunger = Math.max(0, st.hunger - dt * (.075 + (p.sprint ? .06 : 0)));
-  st.thirst = Math.max(0, st.thirst - dt * (.1 + (p.sprint ? .08 : 0)));
+  const [snow, desert] = biomeAt(p.pos.x, p.pos.z);
+  st.thirst = Math.max(0, st.thirst - dt * (.1 + (p.sprint ? .08 : 0)) * (1 + desert * (1 - G.night) * .8));
   if (p.sprint && moving) st.stamina -= dt * 13; else if (p.swim) st.stamina -= dt * 6; else st.stamina += dt * (st.hunger > 10 ? 20 : 8);
   st.stamina = clamp(st.stamina, 0, st.maxStamina);
   // 체온
   let tg = lerp(64, 24, G.night) - Math.max(0, p.pos.y - 20) * 1.3;
+  tg += -snow * 24 + desert * (16 * (1 - G.night) - 8 * G.night); // 설원은 춥고, 사막은 낮에 덥고 밤에 춥다
   if (p.swim) tg -= 20;
   if (G.armor) tg += ITEMS[G.armor].armor.warm;
   if (equipped()?.id === 'torch') tg += 14;
@@ -222,6 +239,7 @@ export function updateStats(dt) {
   if (p.swim && st.stamina <= 0) { dmg += 7; why = '물에 빠졌습니다.'; }
   if (dmg) { st.hp -= dmg * dt; if (st.hp <= 0) die(why); }
   else if (st.hunger > 35 && st.thirst > 35) st.hp = Math.min(st.maxHp, st.hp + dt * .7);
+  warnOnce('bs', snow > .6, '❄️ 설원에 들어섰습니다. 몸을 따뜻하게 하세요'); warnOnce('bd', desert > .6, '🏜️ 사막에 들어섰습니다. 낮에는 목이 빨리 마릅니다');
   warnOnce('h', st.hunger < 20, '🍖 배가 고픕니다'); warnOnce('t', st.thirst < 20, '💧 목이 마릅니다');
   warnOnce('c', st.temp < 26, '🥶 몸이 차가워집니다. 불을 피우세요'); warnOnce('n', G.tod > .74 && G.tod < .8, '🌙 곧 밤이 됩니다. 늑대를 조심하세요');
   document.getElementById('vignette').classList.toggle('cold', st.temp < 24);
