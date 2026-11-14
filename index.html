@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#10202c">
+<title>루미 아일랜드 — 3D 생존 시뮬레이션</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="vignette"></div>
+<div id="touch"></div>
+
+<div id="hud" class="hidden">
+  <div id="topleft">
+  <div id="stats">
+    <div id="lvl"><b id="lvlN">1</b><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="16"/><circle id="xpRing" cx="18" cy="18" r="16"/></svg></div>
+    <div class="bars">
+      <div class="bar hp"><i>❤️</i><div><span id="bHp"></span></div></div>
+      <div class="bar food"><i>🍖</i><div><span id="bFood"></span></div></div>
+      <div class="bar water"><i>💧</i><div><span id="bWater"></span></div></div>
+      <div class="bar temp"><i>🌡️</i><div><span id="bTemp"></span></div></div>
+    </div>
+  </div>
+  <div id="quest"></div>
+  </div>
+  <div id="stam"><span id="bStam"></span></div>
+
+  <div id="topright">
+    <div id="clock"><span id="clockIcon">☀️</span><b id="clockDay">1일차</b><span id="clockTime">08:00</span></div>
+    <div id="mapWrap"><canvas id="minimap" width="220" height="220"></canvas></div>
+    <div id="menuBtns">
+      <button data-open="inv">🎒<small>가방</small></button>
+      <button data-open="craft">🔨<small>제작</small></button>
+      <button data-open="quest">📜<small>목표</small></button>
+      <button data-open="menu">⚙️<small>설정</small></button>
+    </div>
+  </div>
+
+  <div id="toasts"></div>
+  <div id="float"></div>
+  <div id="targetTag" class="hidden"></div>
+
+  <div id="hotbar"></div>
+  <div id="joy"><div id="joyk"></div></div>
+  <div id="btns">
+    <button id="btnDemolish" class="round small hidden">🧹<small>철거</small></button>
+    <button id="btnJump" class="round small">⤴️</button>
+    <button id="btnAct" class="round big"><span id="actIcon">✋</span><small id="actLabel">행동</small></button>
+  </div>
+  <div id="buildbar" class="hidden">
+    <button id="bRot">🔄 회전</button><button id="bPlace" class="primary">✅ 설치</button><button id="bCancel">✖ 취소</button>
+  </div>
+</div>
+
+<div id="panel" class="hidden"><div class="sheet">
+  <header><h2 id="pTitle"></h2><div id="pTabs"></div><button id="pClose">✕</button></header>
+  <div id="pBody"></div>
+</div></div>
+
+<div id="title">
+  <div class="logo"><span>LUMI ISLAND</span><h1>루미 아일랜드</h1><p>낯선 섬에서 살아남고, 빛나는 친구 루미를 만나보세요</p></div>
+  <div class="tbtns">
+    <button id="btnContinue" class="primary hidden">이어하기</button>
+    <button id="btnNew" class="primary">새로 시작</button>
+  </div>
+  <div class="help">📱 왼쪽 화면: 이동 · 오른쪽 화면 드래그: 시점 · 두 손가락: 줌<br>⌨️ WASD 이동 · Shift 달리기 · Space 점프 · E 행동 · 1~6 단축 슬롯 · I 가방 · C 제작</div>
+  <div id="loading">세계를 만드는 중…</div>
+</div>
+<div id="death" class="hidden"><h2>쓰러졌습니다</h2><p id="deathMsg"></p><button id="btnRespawn" class="primary">다시 일어나기</button></div>
+<div id="fade"></div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
