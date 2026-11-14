@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { G } from './util.js';
 import { part, merge, MAT, hdr } from './geo.js';
-import { OUTPOSTS, heightAt } from './world.js';
+import { OUTPOSTS, ISLES, heightAt } from './world.js';
 
 // buys: 상인이 사 주는 값(플레이어가 파는 값) · sells: 상인이 파는 값
 export const SHOPS = {
@@ -18,6 +18,22 @@ export const SHOPS = {
   bazaar: { name: '모래바람 장터', npc: '행상 누리', color: '#a25fd0', hat: '#ffd166',
     buys: { cactus_fruit: 9, hide: 13, sap: 5, fiber: 1, fish_gold: 150, ingot: 26, pumpkin: 20, gold_feast: 220 },
     sells: { seed_pumpkin: 12, juice: 8, rope: 10, chest: 60, bed: 90, roof: 14 } },
+  harbor: { name: '큰바다 항', npc: '항구지기 솔', color: '#2f9e8f', hat: '#f1ead8',
+    buys: { fish_carp: 9, fish_trout: 15, wood: 2, plank: 2, stone: 2, hide: 14, berry: 2, carrot: 6, ingot: 28 },
+    sells: { rod: 25, torch: 12, bandage: 22, rope: 12, plank: 5, seed: 5, chest: 65 } },
+  // ── 배로 건너가는 섬의 항구 마을
+  ice: { name: '얼음고래 항', npc: '선장 하늬', color: '#6fb8e6', hat: '#ffffff',
+    buys: { fish_carp: 11, fish_trout: 19, crayfish: 26, fish_gold: 160, hide: 20, cooked_meat: 18, stew: 70, wood: 3 },
+    sells: { coat: 140, ingot: 44, pick_iron: 190, torch: 9, bandage: 20 } },
+  dune: { name: '붉은모래 항', npc: '상인 마루', color: '#e0703a', hat: '#3a2d22',
+    buys: { cactus_fruit: 12, ore: 14, ingot: 36, stone: 3, flint: 8, juice: 16, pumpkin_soup: 60 },
+    sells: { sword_iron: 170, axe_iron: 180, seed_pumpkin: 10, rope: 9, chest: 55 } },
+  moon: { name: '달맞이 항', npc: '약초꾼 새봄', color: '#7d6fd6', hat: '#c9a0ff',
+    buys: { herb: 10, mushroom: 7, berry: 3, sap: 8, roast_mushroom: 16, bandage: 26, carrot: 8, potato: 9 },
+    sells: { bandage: 16, seed: 4, seed_potato: 6, bed: 80, door: 18, roof: 12, wall: 10, floor: 8 } },
+  coral: { name: '산호 나루', npc: '해녀 가람', color: '#ff8fa3', hat: '#ffe9a8',
+    buys: { fish_carp: 12, fish_trout: 20, crayfish: 30, fish_gold: 190, grilled_fish: 20, grilled_trout: 32, gold_feast: 260 },
+    sells: { rod: 20, juice: 7, plank: 4, fence: 8, plot: 40 } },
 };
 
 const box = (x, y, z) => new THREE.BoxGeometry(x, y, z), cyl = (a, b, h, s = 8) => new THREE.CylinderGeometry(a, b, h, s);
@@ -57,15 +73,28 @@ export function createOutposts() {
     for (let i = 0; i < 7; i++) { const a = Math.PI * (.62 + i * .13), x = Math.sin(a) * 7.6, z = Math.cos(a) * 7.6;
       P.push(part(box(.16, 1.2, .16), wd2, { p: [x, .6, z] }), part(box(3.2, .12, .08), wd, { p: [x, .9, z], r: [0, a + Math.PI / 2, 0] }), part(box(3.2, .12, .08), wd, { p: [x, .5, z], r: [0, a + Math.PI / 2, 0] })); }
     // 마을마다 다른 소품
-    if (o.kind === 'fish') { // 물 쪽으로 뻗은 부두
+    if (o.port) { // 물 쪽으로 뻗은 부두와 정박한 배
       const dy = .55 - o.y;
-      for (let i = 0; i < 9; i++) P.push(part(box(2.6, .16, 1.9), i % 2 ? wd : '#b98248', { p: [0, dy, 7 + i * 2] }));
-      for (const z of [8, 14, 20, 24]) for (const x of [-1.2, 1.2]) P.push(part(cyl(.13, .13, 3.4, 6), wd2, { p: [x, dy - 1.2, z] }));
+      // 부두는 물이 충분히 깊어지는 곳까지 뻗는다 (완만한 해변에서는 길어진다)
+      const hAt = (d) => heightAt(o.x + Math.sin(o.rot) * d, o.z + Math.cos(o.rot) * d);
+      let w0 = 8; while (w0 < 60 && hAt(w0) > -.1) w0 += 2;          // 물이 시작되는 곳
+      let L = w0; while (L < w0 + 14 && hAt(L) > -1.2 && hAt(L + 2) < .2) L += 2; // 조금 더 깊은 곳까지, 건너편 땅은 넘지 않게
+      L = Math.max(L, w0 + 6) + 3; const nPl = Math.ceil((L - 6) / 2); // 끝부분은 항상 물 위
+      for (let i = 0; i < nPl; i++) P.push(part(box(2.6, .16, 1.9), i % 2 ? wd : '#b98248', { p: [0, dy, 7 + i * 2] }));
+      for (let z = 8; z < L; z += 6) for (const x of [-1.2, 1.2]) P.push(part(cyl(.13, .13, 3.4, 6), wd2, { p: [x, dy - 1.2, z] }));
+      const by = -o.y + .25, bz = L - 3.5, bx = 3.4; // 배: 선체 · 선실 · 돛대
+      P.push(part(box(2.4, 1.1, 6.4), '#d9534f', { p: [bx, by, bz], g: '#f0f0f0', j: .04 }), part(new THREE.ConeGeometry(1.2, 2.2, 4), '#d9534f', { p: [bx, by, bz + 4.2], r: [Math.PI / 2, Math.PI / 4, 0], s: [1, 1, .46] }),
+        part(box(2.1, .12, 6.2), '#c8935a', { p: [bx, by + .58, bz] }), part(box(1.6, 1.2, 2), '#f1ead8', { p: [bx, by + 1.2, bz - 1.6] }), part(box(1.8, .14, 2.2), shop.color, { p: [bx, by + 1.86, bz - 1.6] }),
+        part(cyl(.07, .09, 4.2, 6), wd2, { p: [bx, by + 2.6, bz + 1] }), part(box(.05, 1.5, 1.9), '#ffffff', { p: [bx, by + 3.4, bz + 1.95], j: .02 }));
+      o.port = { boat: W(1.2, bz), arrive: W(0, L - 3) };
+      o.dock = { c, s, L };
+    }
+    if (o.kind === 'fish' || o.kind === 'coral' || o.kind === 'harbor') {
       P.push(part(box(.9, .5, .6), '#5f9fd8', { p: [1.9, .3, .8] }), part(cyl(.03, .03, 2.2, 5), wd2, { p: [2.4, 1.1, .2], r: [.5, 0, .2] }));
-    } else if (o.kind === 'farm') {
+    } else if (o.kind === 'farm' || o.kind === 'moon') {
       for (const [x, z] of [[-2.2, 3.4], [.6, 4.2]]) { P.push(part(box(2.2, .25, 2.2), '#6b4a2e', { p: [x, .1, z], j: .12 })); for (let i = 0; i < 9; i++) P.push(part(new THREE.ConeGeometry(.14, .5, 5), '#5fae5b', { p: [x + (i % 3 - 1) * .6, .45, z + (Math.floor(i / 3) - 1) * .6], g: '#b5e06a' })); }
       for (const [x, z] of [[3.4, 3.2], [4.2, 2.3]]) { P.push(part(cyl(.6, .6, .9, 12), '#e6c65a', { p: [x, .6, z], r: [0, 0, Math.PI / 2], j: .1 })); solid(x, z, .7); }
-    } else if (o.kind === 'lodge') {
+    } else if (o.kind === 'lodge' || o.kind === 'ice') {
       P.push(part(cyl(.9, 1.05, 1.2, 8), '#8e9197', { p: [-2.4, .6, 3.4], g: '#b0b3b6', j: .1 }), part(new THREE.ConeGeometry(.95, .8, 8), '#7d8086', { p: [-2.4, 1.6, 3.4] }), part(box(.6, .45, .2), hdr('#ff8a3c', 1.6), { p: [-2.4, .45, 4.4], j: 0 }));
       P.push(part(box(1.1, .3, .5), '#55585e', { p: [1.6, .8, 3.4] }), part(box(.5, .65, .4), '#6e7177', { p: [1.6, .33, 3.4] })); solid(-2.4, 3.4, 1.2); solid(1.6, 3.4, .7);
     } else {
@@ -77,7 +106,7 @@ export function createOutposts() {
     const glow = new THREE.Mesh(box(.26, .3, .26), new THREE.MeshBasicMaterial({ color: hdr('#ffd9a0', 1.5) })); glow.position.copy(lamp.position); g.add(glow);
     const npc = npcModel(shop.color, shop.hat); npc.position.set(0, 0, -3); g.add(npc);
     g.position.set(o.x, o.y, o.z); g.rotation.y = o.rot; G.scene.add(g);
-    [o.nx, o.nz] = W(0, -3); o.npc = npc; o.lamp = lamp; o.S = { label: `${shop.npc} · 거래` }; o.g = g;
+    [o.nx, o.nz] = W(0, -3); o.npc = npc; o.lamp = lamp; o.S = { label: `${shop.npc} · 거래` }; o.g = g; o.isleName = ISLES[o.isle].name;
   }
 }
 export function updateOutposts() {
@@ -92,6 +121,12 @@ export function updateOutposts() {
   }
 }
 // 마을 흙 단 위에 서 있을 때의 바닥 높이 (아니면 -Infinity)
-export const platformTop = (x, z) => { for (const o of OUTPOSTS) if (Math.hypot(o.x - x, o.z - z) < 8.5) return o.y + .05; return -Infinity; };
+export const platformTop = (x, z) => {
+  for (const o of OUTPOSTS) {
+    const dx = x - o.x, dz = z - o.z; if (Math.hypot(dx, dz) < 8.5) return o.y + .05;
+    if (o.dock) { const lx = dx * o.dock.c - dz * o.dock.s, lz = dx * o.dock.s + dz * o.dock.c; if (Math.abs(lx) < 1.35 && lz > 5 && lz < o.dock.L + 1.1) return .64; } // 부두 위
+  }
+  return -Infinity;
+};
 // 야생 동물이 꺼리는 안전 구역인지
 export const inOutpost = (x, z, r = 15) => OUTPOSTS.some(o => Math.hypot(o.x - x, o.z - z) < r);

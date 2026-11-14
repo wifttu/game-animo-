@@ -1,11 +1,11 @@
 // HUD · 패널 UI
 import { G, on, DAY_LEN } from './util.js';
 import { ITEMS, RECIPES, CATS, STATION_NAME, inv, HOTBAR, invCount, invAdd, canCraft } from './items.js';
-import { useSlot, craft, xpNeed, actionHint, demolish, respawn, unequipArmor, doAction, sellItem, buyItem } from './actions.js';
+import { useSlot, craft, xpNeed, actionHint, demolish, respawn, unequipArmor, doAction, sellItem, buyItem, sail } from './actions.js';
 import { stationNear, cancelBuild, rotateBuild } from './structs.js';
 import { NODE_TYPES } from './nodes.js';
 import { QUESTS, quest } from './quests.js';
-import { mapCanvas, HALF, SIZE, setQuality, OUTPOSTS } from './world.js';
+import { mapCanvas, HALF, SIZE, setQuality, OUTPOSTS, ISLES } from './world.js';
 import { applyView } from './player.js';
 import { project } from './fx.js';
 import { sfx } from './audio.js';
@@ -15,6 +15,7 @@ import { setMusic } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
 let panel = null, selSlot = 0, craftCat = 'mat', craftSel = -1, questSel = -1, chest = null;
+let mapFrom = null, mapURL = ''; // 큰 지도 (mapFrom: 배를 타려고 연 항구)
 let shop = null, tradeTab = 'sell', tradeSel = null; // 거래 중인 마을
 let moving = null, drag = null, dragDone = false; // 아이템 이동 상태: {c:'inv'|'chest', i}
 export const panelOpen = () => !!panel;
@@ -44,6 +45,7 @@ export function openPanel(name, arg) {
   cancelBuild(); moving = null; panel = name; chest = name === 'inv' && arg?.data ? arg : null;
   if (name === 'craft' && typeof arg === 'string') { craftCat = arg; craftSel = -1; }
   if (name === 'quest') questSel = -1;
+  if (name === 'map') mapFrom = arg || null;
   if (name === 'trade') { shop = arg.shop; tradeTab = 'sell'; tradeSel = null; }
   $('panel').classList.remove('hidden'); G.paused = true; sfx('ui'); renderPanel();
 }
@@ -93,6 +95,17 @@ function renderPanel() {
         ${r.station ? `<div class="cstation ${stOk(r) ? 'ok' : 'no'}">${stOk(r) ? '✔' : '🔒'} ${STATION_NAME[r.station]} 근처에서만 만들 수 있습니다</div>` : ''}
         <div class="acts"><button class="primary" data-craft="${craftSel}" ${ok ? '' : 'disabled'}>제작</button>${max > 1 && ok && it.stack > 1 ? `<button class="ghostbtn" data-craftmax="${max}">최대 ×${max}</button>` : ''}</div>
       </div></div>`;
+  } else if (panel === 'map') {
+    // 세계 전체 지도. 항구에서 열면 목적지 항구를 눌러 배로 이동한다
+    T.textContent = mapFrom ? '⛵ 어디로 갈까요?' : '세계 지도';
+    mapURL ||= mapCanvas.toDataURL();
+    const pc = (v) => ((v + HALF) / SIZE * 100).toFixed(2) + '%', p = G.player;
+    const isles = ISLES.map(I => `<span class="misle" style="left:${pc(I.x)};top:${pc(I.z - I.r * .55)}">${I.name}</span>`).join('');
+    const marks = OUTPOSTS.map((o, i) => { const here = o === mapFrom, go = mapFrom && o.port && !here; if (mapFrom && !o.port) return ''; // 배를 탈 때는 항구만 표시
+      return `<button class="mport ${go ? 'go' : ''} ${here ? 'here' : ''}" style="left:${pc(o.x)};top:${pc(o.z)}" ${go ? `data-port="${i}"` : 'disabled'}>${o.port ? '⛵' : '🪙'} ${o.shop.name}</button>`; }).join('');
+    const homes = G.structs.filter(s => s.type === 'tent' || s.type === 'bed').map(s => `<span class="mhome" style="left:${pc(s.x)};top:${pc(s.z)}">🏠</span>`).join('');
+    B.innerHTML = `<p class="gridcap">${mapFrom ? '⛵ 표시가 있는 항구를 누르면 배로 이동합니다 (약 1시간 소요)' : '⛵ 항구 · 🪙 마을 · 🏠 내 보금자리 · 다른 섬은 항구에서 배를 타고 갑니다'}</p>
+      <div class="bigmap"><img src="${mapURL}" alt="">${isles}${homes}${marks}<i class="mme" style="left:${pc(p.pos.x)};top:${pc(p.pos.z)};transform:translate(-50%,-50%) rotate(${Math.PI - p.rot}rad)">▲</i></div>`;
   } else if (panel === 'trade') {
     T.textContent = shop.name;
     tabs.innerHTML = [['sell', '팔기'], ['buy', '사기']].map(([k, n]) => `<button data-ttab="${k}" class="${k === tradeTab ? 'on' : ''}">${n}</button>`).join('') + `<button disabled style="opacity:1;color:var(--acc2);font-weight:800">🪙 ${G.stats.coins}</button>`;
@@ -127,7 +140,7 @@ function renderPanel() {
       + row('전체 화면', '가로 모드로 플레이하는 것을 추천합니다', `<button class="ghostbtn" data-set="full">⛶ 전환</button>`)
       + row('저장', '게임은 자동으로 저장됩니다', `<button class="ghostbtn" data-set="save">💾 지금 저장</button>`)
       + row('처음부터 다시', '저장된 진행 상황을 모두 지웁니다', `<button class="ghostbtn" data-set="reset">🗑️ 초기화</button>`)
-      + `<p style="opacity:.75;font-size:.9em;line-height:1.7;margin:12px 0 0">🌙 밤에는 춥고 늑대가 나타납니다. 모닥불 곁은 따뜻하고 늑대가 다가오지 못합니다.<br>🏃 조이스틱을 끝까지 밀면 달립니다 (PC: Shift).<br>🫐 루미에게 숲 열매를 3번 주면 함께 다니며 밤길을 밝히고 적과 싸워줍니다.<br>🪙 미니맵의 노란 마름모가 마을입니다. 상인에게 물건을 팔아 코인을 벌고, 마을마다 다른 물건을 살 수 있습니다.<br>❄️ 북쪽은 설원(추움), 🏜️ 서쪽은 사막(낮에 갈증)입니다.<br>🎣 낚싯대를 들고 물가에서 행동 → 찌가 가라앉으면(❗) 한 번 더 누르면 낚입니다.<br>🏠 집: 바닥을 깔고 → 가장자리에 벽과 문 → 바닥 위에 지붕. 지붕 아래는 따뜻합니다.<br>⛏️ 제작 순서: 맨손 벌목 → 판자·막대기·작업대 → 나무 곡괭이 → 돌 → 돌곡괭이 → 철광석(산) → 화로 제련 → 철 도구.</p>`;
+      + `<p style="opacity:.75;font-size:.9em;line-height:1.7;margin:12px 0 0">🌙 밤에는 춥고 늑대가 나타납니다. 모닥불 곁은 따뜻하고 늑대가 다가오지 못합니다.<br>🏃 조이스틱을 끝까지 밀면 달립니다 (PC: Shift).<br>🫐 루미에게 숲 열매를 3번 주면 함께 다니며 밤길을 밝히고 적과 싸워줍니다.<br>🗺️ 미니맵을 누르면 세계 지도가 열립니다. 부두가 있는 항구에서 배를 타면 다른 섬으로 갈 수 있습니다.<br>🪙 미니맵의 노란 마름모가 마을입니다. 상인에게 물건을 팔아 코인을 벌고, 마을마다 다른 물건을 살 수 있습니다.<br>❄️ 북쪽은 설원(추움), 🏜️ 서쪽은 사막(낮에 갈증)입니다.<br>🎣 낚싯대를 들고 물가에서 행동 → 찌가 가라앉으면(❗) 한 번 더 누르면 낚입니다.<br>🏠 집: 바닥을 깔고 → 가장자리에 벽과 문 → 바닥 위에 지붕. 지붕 아래는 따뜻합니다.<br>⛏️ 제작 순서: 맨손 벌목 → 판자·막대기·작업대 → 나무 곡괭이 → 돌 → 돌곡괭이 → 철광석(산) → 화로 제련 → 철 도구.</p>`;
   }
   B.scrollTop = keep;
 }
@@ -180,7 +193,7 @@ function initDrag() {
 
 let resetArmed = 0;
 function panelClick(e) {
-  const t = e.target.closest('[data-slot],[data-chest],[data-act],[data-cat],[data-craft],[data-craftmax],[data-rsel],[data-qsel],[data-set],[data-ttab],[data-tsel],[data-trade]'); if (!t) return;
+  const t = e.target.closest('[data-slot],[data-chest],[data-act],[data-cat],[data-craft],[data-craftmax],[data-rsel],[data-qsel],[data-set],[data-ttab],[data-tsel],[data-trade],[data-port]'); if (!t) return;
   const d = t.dataset;
   if (dragDone) return;
   if (d.slot !== undefined) {
@@ -193,6 +206,7 @@ function panelClick(e) {
   else if (d.chest !== undefined) { const c = chest.data.slots[+d.chest]; if (c) { const left = invAdd(c.id, c.n, c.dur); if (left) c.n = left; else chest.data.slots[+d.chest] = null; sfx('pick'); } }
   else if (d.cat) { craftCat = d.cat; craftSel = -1; $('pBody').scrollTop = 0; sfx('ui'); }
   else if (d.rsel) { craftSel = +d.rsel; sfx('ui'); }
+  else if (d.port) { sail(OUTPOSTS[+d.port]); return; }
   else if (d.ttab) { tradeTab = d.ttab; tradeSel = null; sfx('ui'); }
   else if (d.tsel) { tradeSel = d.tsel; sfx('ui'); }
   else if (d.trade) { if (tradeTab === 'sell') sellItem(shop, tradeSel, +d.trade); else buyItem(shop, tradeSel); }
@@ -235,6 +249,7 @@ export function initUI() {
   $('panel').addEventListener('pointerdown', (e) => { if (e.target.id === 'panel') closePanel(); });
   document.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => openPanel(b.dataset.open)));
   $('quest').addEventListener('click', () => openPanel('quest'));
+  $('mapWrap').addEventListener('click', () => openPanel('map'));
   $('hotbar').addEventListener('pointerdown', (e) => {
     const t = e.target.closest('[data-slot]'); if (!t || G.editing) return; e.stopPropagation();
     const i = +t.dataset.slot, s = inv.slots[i];
@@ -272,9 +287,9 @@ export function updateHUD(dt) {
   $('btnDemolish').classList.toggle('hidden', t?.kind !== 'struct' || !!G.build);
   let shown = false;
   if (t && !G.build) {
-    const o = t.o, top = t.kind === 'npc' ? 2.3 : t.kind === 'node' ? (NODE_TYPES[o.t].r ? 2.2 : .8) : t.kind === 'animal' ? 1.6 : 2.2, sp = project(t.x, (o.y ?? 0) + top, t.z);
+    const o = t.o, top = t.kind === 'port' ? 1.2 - (o.y ?? 0) + 2 : t.kind === 'npc' ? 2.3 : t.kind === 'node' ? (NODE_TYPES[o.t].r ? 2.2 : .8) : t.kind === 'animal' ? 1.6 : 2.2, sp = project(t.x, (o.y ?? 0) + top, t.z);
     if (sp) {
-      const label = t.kind === 'node' ? NODE_TYPES[o.t].label : t.kind === 'animal' ? o.S.name : o.S.label, max = t.kind === 'node' ? NODE_TYPES[o.t].hp : t.kind === 'animal' ? o.S.hp : 0;
+      const label = t.kind === 'port' ? '⛵ 배 타기' : t.kind === 'node' ? NODE_TYPES[o.t].label : t.kind === 'animal' ? o.S.name : o.S.label, max = t.kind === 'node' ? NODE_TYPES[o.t].hp : t.kind === 'animal' ? o.S.hp : 0;
       const html = label + (max > 1 && o.hp < max ? `<i><u style="width:${Math.max(0, o.hp / max * 100)}%"></u></i>` : '');
       if (tag.dataset.h !== html) { tag.dataset.h = html; tag.innerHTML = html; }
       tag.style.left = sp[0] + 'px'; tag.style.top = sp[1] + 'px'; shown = true;

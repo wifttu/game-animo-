@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { G, rng, rint, lerp, emit } from './util.js';
 import { NODE_GEO, DECOR_GEO, MAT, FOLIAGE } from './geo.js';
-import { heightAt, slopeAt, forestAt, SIZE, biomeAt, OUTPOSTS } from './world.js';
+import { heightAt, slopeAt, forestAt, MAIN, ISLES, biomeAt, OUTPOSTS } from './world.js';
 
 const flat = (x, z, max = .55) => slopeAt(x, z) < max;
 const green = (x, z) => { const b = biomeAt(x, z); return b[0] < .3 && b[1] < .3; }; // 초원 지역인지
@@ -33,36 +33,42 @@ let bushMesh;
 
 function setM(n, tilt = 0, sm = 1, wob = 0) {
   d.position.set(n.x, n.y, n.z); d.rotation.set(tilt, n.rot, wob, 'YXZ'); d.scale.setScalar(n.s * sm); d.updateMatrix();
-  const im = meshes[n.t]; im.setMatrixAt(n.i, d.matrix); im.instanceMatrix.needsUpdate = true;
+  const im = meshes[n.m]; im.setMatrixAt(n.i, d.matrix); im.instanceMatrix.needsUpdate = true;
 }
 
 export function createNodes() {
   const r = rng(4242), col = new THREE.Color();
   // 시작 지점 주변에는 튜토리얼용 자원을 확실히 배치
   const starter = [['fiber', -6, 8], ['fiber', 5, 12], ['fiber', -3, 5], ['berry', -8, 10], ['berry', 9, 12], ['oak', -10, 4], ['oak', 11, 7], ['oak', 2, 16], ['oak', -5, 13], ['rock', -9, 14], ['rock', 12, 13]];
-  const bushM = [];
-  for (const t in NODE_TYPES) {
-    const T = NODE_TYPES[t], im = new THREE.InstancedMesh(NODE_GEO[t](), ['oak', 'pine', 'berry', 'fiber', 'herb', 'cactus'].includes(t) ? FOLIAGE : MAT, T.n);
-    im.castShadow = !!T.shadow; im.receiveShadow = true; im.frustumCulled = false;
-    meshes[t] = im; G.scene.add(im);
-    const st = starter.filter(s => s[0] === t);
+  const bushM = [], geoC = {}, FOL = ['oak', 'pine', 'berry', 'fiber', 'herb', 'cactus'];
+  // 한 섬(region)에 한 종류의 노드를 count개까지 배치. 섬마다 묶음을 나눠 화면 밖의 섬은 그리지 않는다
+  const fill = (t, region, count, rnd, cx, cz, half, st) => {
+    const T = NODE_TYPES[t], im = new THREE.InstancedMesh(geoC[t] ??= NODE_GEO[t](), FOL.includes(t) ? FOLIAGE : MAT, count), m = t + '|' + region;
+    im.castShadow = !!T.shadow; im.receiveShadow = true; meshes[m] = im;
     let n = 0, guard = 0;
-    while (n < T.n && guard++ < T.n * 60) {
+    while (n < count && guard++ < count * 60) {
       let x, z; const s0 = st[n];
-      if (s0) { x = s0[1]; z = s0[2]; } else { x = (r() - .5) * SIZE * .9; z = (r() - .5) * SIZE * .9; }
+      if (s0) { x = s0[1]; z = s0[2]; } else { x = cx + (rnd() - .5) * half; z = cz + (rnd() - .5) * half; }
       const h = heightAt(x, z);
-      if (!s0 && (!T.rule(x, z, h) || (T.r > 0 && Math.hypot(x, z - 4) < 7) || OUTPOSTS.some(o => Math.hypot(o.x - x, o.z - z) < 11))) continue;
-      const node = { id: nodes.length, t, i: n, x, y: h - (T.r > 0 ? .08 : 0), z, rot: r() * 6.28, s: lerp(T.s[0], T.s[1], r()), hp: T.hp || 1, dead: false, respawn: 0 };
+      if (!s0 && (!T.rule(x, z, h) || (T.r > 0 && Math.hypot(x, z - 4) < 7) || OUTPOSTS.some(o => !(region === 0 && o.late) && Math.hypot(o.x - x, o.z - z) < 11))) continue;
+      const node = { id: nodes.length, t, m, i: n, x, y: h - (T.r > 0 ? .08 : 0), z, rot: rnd() * 6.28, s: lerp(T.s[0], T.s[1], rnd()), hp: T.hp || 1, dead: false, respawn: 0 };
       nodes.push(node); setM(node);
-      const k = .88 + r() * .24; im.setColorAt(n, col.setRGB(k, k * (.96 + r() * .08), k));
+      const k = .88 + rnd() * .24; im.setColorAt(n, col.setRGB(k, k * (.96 + rnd() * .08), k));
       const gk = key(x, z); (grid.get(gk) || grid.set(gk, []).get(gk)).push(node);
       if (T.bush) bushM.push(node);
       n++;
     }
-    im.count = n;
-  }
-  bushMesh = new THREE.InstancedMesh(DECOR_GEO.bush(), FOLIAGE, bushM.length);
-  bushM.forEach((n, i) => { d.position.set(n.x, n.y, n.z); d.rotation.set(0, n.rot, 0); d.scale.setScalar(n.s); d.updateMatrix(); bushMesh.setMatrixAt(i, d.matrix); });
+    im.count = n; if (n) { im.computeBoundingSphere(); G.scene.add(im); }
+  };
+  // 본섬을 먼저, 예전과 같은 난수 순서로 만든다 (기존 저장의 자원 번호가 그대로 유지된다)
+  for (const t in NODE_TYPES) fill(t, 0, NODE_TYPES[t].n, r, 0, 0, MAIN * 2 * .9, starter.filter(s => s[0] === t));
+  const r2 = rng(777);
+  for (let i = 1; i < ISLES.length; i++) { const I = ISLES[i]; for (const t in NODE_TYPES) fill(t, i, Math.round(NODE_TYPES[t].n * (I.r / 190) ** 2 * 1.4), r2, I.x, I.z, I.r * 2, []); }
+  // 나중에 추가된 본섬 항구 자리의 자원은 치운다 (배치 순서를 바꾸지 않으려고 생성 뒤에 처리)
+  for (const n of nodes) if (OUTPOSTS.some(o => o.late && Math.hypot(o.x - n.x, o.z - n.z) < 11)) { n.dead = n.gone = true; n.respawn = Infinity; setM(n, 0, 0); }
+  const bushes = bushM.filter(n => !n.gone);
+  bushMesh = new THREE.InstancedMesh(DECOR_GEO.bush(), FOLIAGE, bushes.length);
+  bushes.forEach((n, i) => { d.position.set(n.x, n.y, n.z); d.rotation.set(0, n.rot, 0); d.scale.setScalar(n.s); d.updateMatrix(); bushMesh.setMatrixAt(i, d.matrix); });
   bushMesh.castShadow = bushMesh.receiveShadow = true; bushMesh.frustumCulled = false; G.scene.add(bushMesh);
 }
 
@@ -121,7 +127,7 @@ export function updateNodes(dt) {
   }
 }
 
-export const saveNodes = () => nodes.filter(n => n.dead).map(n => [n.id, Math.round(n.respawn)]);
+export const saveNodes = () => nodes.filter(n => n.dead && !n.gone).map(n => [n.id, Math.round(n.respawn)]);
 export function loadNodes(list) {
-  for (const [id, t] of list || []) { const n = nodes[id]; if (!n) continue; n.dead = true; n.respawn = t; setM(n, 0, 0); active.add(n); }
+  for (const [id, t] of list || []) { const n = nodes[id]; if (!n || n.gone) continue; n.dead = true; n.respawn = t; setM(n, 0, 0); active.add(n); }
 }

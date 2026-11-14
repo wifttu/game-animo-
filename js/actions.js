@@ -60,7 +60,7 @@ export function findTarget() {
   };
   for (const n of nodesNear(px, pz, 6, near)) consider('node', n, n.x, n.z, NODE_TYPES[n.t].r * .8, 0, 2.3);
   for (const a of G.animals) if (!a.dying && !a.tamed) consider('animal', a, a.x, a.z, .5, -.8);
-  for (const o of OUTPOSTS) consider('npc', o, o.nx, o.nz, .4, -1.2, 3.1);
+  for (const o of OUTPOSTS) { consider('npc', o, o.nx, o.nz, .4, -1.2, 3.1); if (o.port) consider('port', o, o.port.boat[0], o.port.boat[1], 1.4, -1.2, 3.2); }
   for (const s of G.structs) consider('struct', s, s.x, s.z, s.S.r || .6, s.S.act ? -.3 : .8, 2.2);
   return best;
 }
@@ -73,6 +73,7 @@ export function actionHint() {
   if (t?.kind === 'node') { const T = NODE_TYPES[t.o.t]; return T.pick ? ['✋', '줍기'] : T.tool === 'axe' ? ['🪓', '벌목'] : ['⛏️', '채광']; }
   if (t?.kind === 'animal') return t.o.kind === 'lumi' && invCount('berry') ? ['🫐', '먹이 주기'] : ['⚔️', '공격'];
   if (t?.kind === 'npc') return ['🪙', '거래'];
+  if (t?.kind === 'port') return ['⛵', '배 타기'];
   if (t?.kind === 'struct' && t.o.S.act) return ['🤚', t.o.S.act];
   if (nearWater()) return ['💧', '마시기'];
   if (eq?.food) return [eq.icon, eq.id === 'bandage' ? '사용' : '먹기'];
@@ -101,6 +102,7 @@ export function doAction() {
   }
   p.swing = .38;
   if (t.kind === 'npc') return openPanel('trade', t.o);
+  if (t.kind === 'port') return openPanel('map', t.o);
   if (t.kind === 'node') {
     const n = t.o, T = NODE_TYPES[n.t];
     if (T.pick) { const dr = hitNode(n, 99); sfx('pick'); for (const [id, k] of dr) gain(id, k); addXp(T.xp); return; }
@@ -190,6 +192,19 @@ export function useSlot(i) {
   refreshHotbar();
 }
 export function unequipArmor() { if (G.armor && invAdd(G.armor, 1) === 0) { G.armor = null; refreshHotbar(); } }
+
+// ── 배편: 항구에서 다른 항구로 이동
+export function sail(dest) {
+  closePanel();
+  const f = document.getElementById('fade'); f.classList.add('on'); G.paused = true; sfx('splash');
+  setTimeout(() => {
+    const p = G.player, [x, z] = dest.port.arrive;
+    p.pos.set(x, .64, z); p.vy = 0; p.rot = dest.rot + Math.PI; p.cam.yaw = dest.rot;
+    G.tod += .04; if (G.tod >= 1) { G.tod -= 1; G.day++; } // 항해에 한 시간쯤 걸린다
+    f.classList.remove('on'); G.paused = false; G.target = null;
+    toast(`⛵ ${dest.isleName} · ${dest.shop.name}에 도착했습니다`, 'big'); emit('sail'); save();
+  }, 1000);
+}
 
 // ── 거래
 export function sellItem(shop, id, n) {
